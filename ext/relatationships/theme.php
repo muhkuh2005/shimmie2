@@ -1,6 +1,9 @@
 <?php
 
 class RelationshipsTheme extends Themelet {
+	/**
+	 * @param \Image $image
+	 */
 	public function relationship_info($image) {
 		global $page, $database;
 
@@ -25,6 +28,7 @@ class RelationshipsTheme extends Themelet {
 
 	public function get_parent_editor_html(Image $image) {
 		global $user;
+
 		$h_parent_id = $image->parent_id;
 		$s_parent_id = $h_parent_id ?: "None.";
 
@@ -33,7 +37,7 @@ class RelationshipsTheme extends Themelet {
 		        "	<td>\n".
 		        (!$user->is_anonymous() ?
 		            "		<span class='view' style='overflow: hidden; white-space: nowrap;'>{$s_parent_id}</span>\n".
-		            "		<input class='edit' type='text' name='tag_edit__parent' type='number' value='{$h_parent_id}'>\n"
+		            "		<input class='edit' type='number' name='tag_edit__parent' type='number' value='{$h_parent_id}'>\n"
 		        :
 		            $s_parent_id
 		        ).

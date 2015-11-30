@@ -35,7 +35,6 @@ class CustomUserPageTheme extends UserPageTheme {
 	}
 
 	public function display_user_block(Page $page, User $user, $parts) {
-		$h_name = html_escape($user->name);
 		$html = "";
 		$blocked = array("Pools", "Pool Changes", "Alias Editor", "My Profile");
 		foreach($parts as $part) {
@@ -74,6 +73,11 @@ class CustomUserPageTheme extends UserPageTheme {
 		$page->add_block(new Block("Signup", $html));
 	}
 
+	/**
+	 * @param Page $page
+	 * @param array $uploads
+	 * @param array $comments
+	 */
 	public function display_ip_list(Page $page, $uploads, $comments) {
 		$html = "<table id='ip-history' style='width: 400px;'>";
 		$html .= "<tr><td>Uploaded from: ";

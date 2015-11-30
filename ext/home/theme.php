@@ -3,12 +3,16 @@
 class HomeTheme extends Themelet {
 	public function display_page(Page $page, $sitename, $base_href, $theme_name, $body) {
 		$page->set_mode("data");
+		$hh = "";
+		$page->add_auto_html_headers();
+		foreach($page->html_headers as $h) {$hh .= $h;}
 		$page->set_data(<<<EOD
 <html>
 	<head>
 		<title>$sitename</title>
 		<meta http-equiv="Content-Type" content="text/html;charset=utf-8">
-		<link rel='stylesheet' href='$base_href/themes/$theme_name/style.css' type='text/css'>
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+		$hh
 	</head>
 	<style>
 		div#front-page h1 {font-size: 4em; margin-top: 2em; margin-bottom: 0px; text-align: center; border: none; background: none; box-shadow: none; -webkit-box-shadow: none; -moz-box-shadow: none;}
@@ -16,6 +20,10 @@ class HomeTheme extends Themelet {
 		.space {margin-bottom: 1em;}
 		div#front-page div#links a {margin: 0 0.5em;}
 		div#front-page li {list-style-type: none; margin: 0;}
+		@media (max-width: 800px) {
+			div#front-page h1 {font-size: 3em; margin-top: 0.5em; margin-bottom: 0.5em;}
+			#counter {display: none;}
+		}
 	</style>
 	<body>
 		$body
@@ -33,7 +41,7 @@ EOD
 		$search_html = "
 			<div class='space' id='search'>
 				<form action='".make_link("post/list")."' method='GET'>
-				<input name='search' size='30' type='text' value='' class='autocomplete_tags' autofocus='autofocus'/>
+				<input name='search' size='30' type='search' value='' class='autocomplete_tags' autofocus='autofocus' autocomplete='off' />
 				<input type='hidden' name='q' value='/post/list'>
 				<input type='submit' value='Search'/>
 				</form>

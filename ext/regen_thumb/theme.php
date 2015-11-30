@@ -1,20 +1,26 @@
 <?php
 
 class RegenThumbTheme extends Themelet {
-	/*
+	/**
 	 * Show a form which offers to regenerate the thumb of an image with ID #$image_id
+	 *
+	 * @param int|string $image_id
+	 * @return string
 	 */
 	public function get_buttons_html($image_id) {
 		return "
 			".make_form(make_link("regen_thumb"))."
 			<input type='hidden' name='image_id' value='$image_id'>
-			<input type='submit' value='Regenerate'>
+			<input type='submit' value='Regenerate Thumbnail'>
 			</form>
 		";
 	}
 
-	/*
-	 * Show a link to the new thumbnail
+	/**
+	 * Show a link to the new thumbnail.
+	 *
+	 * @param Page $page
+	 * @param Image $image
 	 */
 	public function display_results(Page $page, Image $image) {
 		$page->set_title("Thumbnail Regenerated");

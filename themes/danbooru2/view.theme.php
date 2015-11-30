@@ -1,6 +1,10 @@
 <?php
 
 class CustomViewImageTheme extends ViewImageTheme {
+	/**
+	 * @param Image $image
+	 * @param $editor_parts
+	 */
 	public function display_page(Image $image, $editor_parts) {
 		global $page;
 		$page->set_title("Image {$image->id}: ".html_escape($image->get_tag_list()));
@@ -9,7 +13,11 @@ class CustomViewImageTheme extends ViewImageTheme {
 		$page->add_block(new Block("Information", $this->build_information($image), "left", 15));
 		$page->add_block(new Block(null, $this->build_info($image, $editor_parts), "main", 15));
 	}
-	
+
+	/**
+	 * @param Image $image
+	 * @return string
+	 */
 	private function build_information(Image $image) {
 		$h_owner = html_escape($image->get_owner()->name);
 		$h_ownerlink = "<a href='".make_link("user/$h_owner")."'>$h_owner</a>";
@@ -31,17 +39,17 @@ class CustomViewImageTheme extends ViewImageTheme {
 
 		if(!is_null($image->source)) {
 			$h_source = html_escape($image->source);
-			if(substr($image->source, 0, 7) != "http://") {
+			if(substr($image->source, 0, 7) != "http://" && substr($image->source, 0, 8) != "https://") {
 				$h_source = "http://" . $h_source;
 			}
 			$html .= "<br>Source: <a href='$h_source'>link</a>";
 		}
 
-		if(class_exists("Ratings")) {
+		if(ext_is_live("Ratings")) {
 			if($image->rating == null || $image->rating == "u"){
 				$image->rating = "u";
 			}
-			if(class_exists("Ratings")) {
+			if(ext_is_live("Ratings")) {
 				$h_rating = Ratings::rating_to_human($image->rating);
 				$html .= "<br>Rating: $h_rating";
 			}
@@ -50,6 +58,10 @@ class CustomViewImageTheme extends ViewImageTheme {
 		return $html;
 	}
 
+	/**
+	 * @param Image $image
+	 * @return string
+	 */
 	protected function build_navigation(Image $image) {
 		//$h_pin = $this->build_pin($image);
 		$h_search = "

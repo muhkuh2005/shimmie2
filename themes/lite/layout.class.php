@@ -10,7 +10,9 @@
 class Layout {
 
 	/**
-	 * turns the Page into HTML
+	 * turns the Page into HTML.
+	 *
+	 * @param Page $page
 	 */
 	public function display_page(Page $page) {
 		global $config, $user;
@@ -80,7 +82,7 @@ class Layout {
 		// hack
 		$username = url_escape($user->name);
 		// hack
-		$qp = explode("/", ltrim(@$_GET["q"], "/"));
+		$qp = explode("/", ltrim(_get_query(), "/"));
 		$cs = "";
 
 		// php sucks
@@ -165,11 +167,10 @@ class Layout {
 			$main_block_html = "<article>{$main_block_html}</article>";
 		}
 
-		$flash = get_prefixed_cookie("flash_message");
+		$flash = $page->get_cookie("flash_message");
 		$flash_html = "";
 		if($flash) {
 			$flash_html = "<b id='flash'>".nl2br(html_escape($flash))." <a href='#' onclick=\"\$('#flash').hide(); return false;\">[X]</a></b>";
-			set_prefixed_cookie("flash_message", "", -1, "/");
 		}
 
 		print <<<EOD
@@ -210,9 +211,14 @@ EOD;
 
 
 	/**
-	 * A handy function which does exactly what it says in the method name
+	 * A handy function which does exactly what it says in the method name.
+	 *
+	 * @param Block $block
+	 * @param bool $hidable
+	 * @param string $salt
+	 * @return string
 	 */
-	public function block_to_html($block, $hidable=false, $salt="") {
+	public function block_to_html(Block $block, $hidable=false, $salt="") {
 		$h = $block->header;
 		$b = $block->body;
 		$i = str_replace(' ', '_', $h) . $salt;
@@ -238,12 +244,18 @@ EOD;
 		return $html;
 	}
 
+	/**
+	 * @param string $link
+	 * @param null|string $desc
+	 * @param array $pages_matched
+	 * @return null|string
+	 */
 	public function navlinks($link, $desc, $pages_matched) {
 		/**
 		 * Woo! We can actually SEE THE CURRENT PAGE!! (well... see it highlighted in the menu.)
 		 */
 		$html = null;
-		$url = ltrim($_GET['q'], "/");
+		$url = ltrim(_get_query(), "/");
 
 		$re1='.*?';
 		$re2='((?:[a-z][a-z_]+))';

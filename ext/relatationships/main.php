@@ -7,13 +7,16 @@
  */
 
 class Relationships extends Extension {
+	protected $db_support = ['mysql', 'pgsql'];
+
 	public function onInitExt(InitExtEvent $event) {
 		global $config, $database;
 
 		// Create the database tables
 		if ($config->get_int("ext_relationships_version") < 1){
-			$database->Execute("ALTER TABLE images ADD parent_id INT NULL, ADD INDEX (parent_id);");
-			$database->Execute("ALTER TABLE images ADD has_children BOOL DEFAULT FALSE NOT NULL;");
+			$database->execute("ALTER TABLE images ADD parent_id INT");
+			$database->execute($database->scoreql_to_sql("ALTER TABLE images ADD has_children SCORE_BOOL DEFAULT SCORE_BOOL_N NOT NULL"));
+			$database->execute("CREATE INDEX images__parent_id ON images(parent_id)");
 
 			$config->set_int("ext_relationships_version", 1);
 			log_info("relationships", "extension installed");
@@ -21,7 +24,6 @@ class Relationships extends Extension {
 	}
 
 	public function onImageInfoSet(ImageInfoSetEvent $event) {
-        global $user;
 		if(isset($_POST['tag_edit__tags']) ? !preg_match('/parent[=|:]/', $_POST["tag_edit__tags"]) : TRUE) { //Ignore tag_edit__parent if tags contain parent metatag
 			if (isset($_POST["tag_edit__parent"]) ? ctype_digit($_POST["tag_edit__parent"]) : FALSE) {
 				$this->set_parent($event->image->id, (int) $_POST["tag_edit__parent"]);
@@ -91,6 +93,10 @@ class Relationships extends Extension {
 		}
 	}
 
+	/**
+	 * @param int $imageID
+	 * @param int $parentID
+	 */
 	private function set_parent(/*int*/ $imageID, /*int*/ $parentID){
 		global $database;
 
@@ -100,6 +106,10 @@ class Relationships extends Extension {
 		}
 	}
 
+	/**
+	 * @param int $parentID
+	 * @param int $childID
+	 */
 	private function set_child(/*int*/ $parentID, /*int*/ $childID){
 		global $database;
 
@@ -109,6 +119,9 @@ class Relationships extends Extension {
 		}
 	}
 
+	/**
+	 * @param int $imageID
+	 */
 	private function remove_parent(/*int*/ $imageID){
 		global $database;
 		$parentID = $database->get_one("SELECT parent_id FROM images WHERE id = :iid", array("iid"=>$imageID));

@@ -11,6 +11,10 @@
  */
 
 class ReportImageTheme extends Themelet {
+	/**
+	 * @param Page $page
+	 * @param array $reports
+	 */
 	public function display_reported_images(Page $page, $reports) {
 		global $config;
 
@@ -57,11 +61,14 @@ class ReportImageTheme extends Themelet {
 		$page->set_heading("Reported Images");
 		$page->add_block(new NavBlock());
 		$page->add_block(new Block("Reported Images", $html));
-
 	}
 
+	/**
+	 * @param Image $image
+	 * @param array $reporters
+	 */
 	public function display_image_banner(Image $image, /*array*/ $reporters) {
-		global $config, $page;
+		global $page;
 
 		$i_image = int_escape($image->id);
 		$html = "";
@@ -76,6 +83,18 @@ class ReportImageTheme extends Themelet {
 			</form>
 		";
 		$page->add_block(new Block("Report Image", $html, "left"));
+	}
+
+	public function get_nuller(User $duser) {
+		global $user, $page;
+		$html = "
+			<form action='".make_link("image_report/remove_reports_by")."' method='POST'>
+			".$user->get_auth_html()."
+			<input type='hidden' name='user_id' value='{$duser->id}'>
+			<input type='submit' value='Delete all reports by this user'>
+			</form>
+		";
+		$page->add_block(new Block("Reports", $html, "main", 80));
 	}
 }
 

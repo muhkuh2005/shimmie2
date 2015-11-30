@@ -33,6 +33,11 @@ class RSS_Images extends Extension {
 		}
 	}
 
+	/**
+	 * @param array $images
+	 * @param array $search_terms
+	 * @param int $page_number
+	 */
 	private function do_rss($images, $search_terms, /*int*/ $page_number) {
 		global $page;
 		global $config;
@@ -78,6 +83,10 @@ class RSS_Images extends Extension {
 		$page->set_data($xml);
 	}
 
+	/**
+	 * @param Image $image
+	 * @return string
+	 */
 	private function thumb(Image $image) {
 		global $database;
 
@@ -89,7 +98,7 @@ class RSS_Images extends Extension {
 		$owner = $image->get_owner();
 		$thumb_url = $image->get_thumb_link();
 		$image_url = $image->get_image_link();
-		$posted = date(DATE_RSS, $image->posted_timestamp);
+		$posted = date(DATE_RSS, strtotime($image->posted));
 		$content = html_escape(
 			"<p>" . $this->theme->build_thumb_html($image) . "</p>" .
 			"<p>Uploaded by " . html_escape($owner->name) . "</p>"

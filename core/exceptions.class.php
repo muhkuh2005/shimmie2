@@ -1,11 +1,16 @@
 <?php
+
 /**
- * A base exception to be caught by the upper levels
+ * Class SCoreException
+ *
+ * A base exception to be caught by the upper levels.
  */
 class SCoreException extends Exception {}
 
 /**
- * A fairly common, generic exception
+ * Class PermissionDeniedException
+ *
+ * A fairly common, generic exception.
  */
 class PermissionDeniedException extends SCoreException {}
 
@@ -17,3 +22,8 @@ class PermissionDeniedException extends SCoreException {}
  * Example: Image::by_id(-1) returns null
  */
 class ImageDoesNotExist extends SCoreException {}
+
+/*
+ * For validate_input()
+ */
+class InvalidInput extends SCoreException {}

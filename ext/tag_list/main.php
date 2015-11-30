@@ -56,8 +56,13 @@ class TagList extends Extension {
 				$SQLarr['limit'] = $_GET["limit"];
 			}
 
-			$res = $database->get_col(
-					"SELECT tag FROM tags WHERE tag LIKE :search AND count > 0 $limitSQL", $SQLarr);
+			$res = $database->get_col($database->scoreql_to_sql("
+				SELECT tag
+				FROM tags
+				WHERE SCORE_STRNORM(tag) LIKE SCORE_STRNORM(:search)
+					AND count > 0
+				$limitSQL
+			"), $SQLarr);
 
 			$page->set_mode("data");
 			$page->set_type("text/plain");
@@ -121,6 +126,10 @@ class TagList extends Extension {
 	}
 // }}}
 // misc {{{
+	/**
+	 * @param string $tag
+	 * @return string
+	 */
 	private function tag_link(/*string*/ $tag) {
 		$u_tag = url_escape($tag);
 		return make_link("post/list/$u_tag/1");
@@ -129,7 +138,8 @@ class TagList extends Extension {
 	/**
 	 * Get the minimum number of times a tag needs to be used
 	 * in order to be considered in the tag list.
-	 * @retval int
+	 *
+	 * @return int
 	 */
 	private function get_tags_min() {
 		if(isset($_GET['mincount'])) {
@@ -141,6 +151,9 @@ class TagList extends Extension {
 		}
 	}
 
+	/**
+	 * @return string
+	 */
 	private function get_starts_with() {
 		global $config;
 		if(isset($_GET['starts_with'])) {
@@ -156,6 +169,9 @@ class TagList extends Extension {
 		}
 	}
 
+	/**
+	 * @return string
+	 */
 	private function build_az() {
 		global $database;
 
@@ -169,16 +185,20 @@ class TagList extends Extension {
 			ORDER BY SCORE_STRNORM(substr(tag, 1, 1))
 		"), array("tags_min"=>$tags_min));
 
-		$html = "";
+		$html = "<span class='atoz'>";
 		foreach($tag_data as $a) {
 			$html .= " <a href='".modify_current_url(array("starts_with"=>$a))."'>$a</a>";
 		}
-		$html .= "<p><hr>";
+		$html .= "</span>\n<p><hr>";
 
 		return $html;
 	}
 // }}}
 // maps {{{
+
+	/**
+	 * @return string
+	 */
 	private function build_navigation() {
 		$h_index = "<a href='".make_link()."'>Index</a>";
 		$h_map = "<a href='".make_link("tags/map")."'>Map</a>";
@@ -189,6 +209,9 @@ class TagList extends Extension {
 		return "$h_index<br>&nbsp;<br>$h_map<br>$h_alphabetic<br>$h_popularity<br>$h_cats<br>&nbsp;<br>$h_all";
 	}
 
+	/**
+	 * @return string
+	 */
 	private function build_tag_map() {
 		global $config, $database;
 
@@ -226,6 +249,9 @@ class TagList extends Extension {
 		return $html;
 	}
 
+	/**
+	 * @return string
+	 */
 	private function build_tag_alphabetic() {
 		global $config, $database;
 
@@ -279,6 +305,9 @@ class TagList extends Extension {
 		return $html;
 	}
 
+	/**
+	 * @return string
+	 */
 	private function build_tag_popularity() {
 		global $database;
 
@@ -318,6 +347,9 @@ class TagList extends Extension {
 		return $html;
 	}
 
+	/**
+	 * @return string
+	 */
 	private function build_tag_list() {
 		global $database;
 
@@ -344,9 +376,12 @@ class TagList extends Extension {
 	}
 // }}}
 // blocks {{{
+	/**
+	 * @param Page $page
+	 * @param Image $image
+	 */
 	private function add_related_block(Page $page, Image $image) {
-		global $database;
-		global $config;
+		global $database, $config;
 
 		$query = "
 			SELECT t3.tag AS tag, t3.count AS calc_count, it3.tag_id
@@ -376,9 +411,12 @@ class TagList extends Extension {
 		}
 	}
 
+	/**
+	 * @param Page $page
+	 * @param Image $image
+	 */
 	private function add_split_tags_block(Page $page, Image $image) {
 		global $database;
-		global $config;
 
 		$query = "
 			SELECT tags.tag, tags.count as calc_count
@@ -395,9 +433,12 @@ class TagList extends Extension {
 		}
 	}
 
+	/**
+	 * @param Page $page
+	 * @param Image $image
+	 */
 	private function add_tags_block(Page $page, Image $image) {
 		global $database;
-		global $config;
 
 		$query = "
 			SELECT tags.tag, tags.count as calc_count
@@ -414,9 +455,11 @@ class TagList extends Extension {
 		}
 	}
 
+	/**
+	 * @param Page $page
+	 */
 	private function add_popular_block(Page $page) {
-		global $database;
-		global $config;
+		global $database, $config;
 
 		$tags = $database->cache->get("popular_tags");
 		if(empty($tags)) {
@@ -437,9 +480,12 @@ class TagList extends Extension {
 		}
 	}
 
+	/**
+	 * @param Page $page
+	 * @param string[] $search
+	 */
 	private function add_refine_block(Page $page, /*array(string)*/ $search) {
-		global $database;
-		global $config;
+		global $database, $config;
 
 		$wild_tags = Tag::explode($search);
 		$str_search = Tag::implode($search);

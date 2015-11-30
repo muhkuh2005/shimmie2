@@ -11,9 +11,15 @@
  */
 
 class AddAliasEvent extends Event {
-	var $oldtag;
-	var $newtag;
+	/** @var string  */
+	public $oldtag;
+	/** @var string  */
+	public $newtag;
 
+	/**
+	 * @param string $oldtag
+	 * @param string $newtag
+	 */
 	public function __construct($oldtag, $newtag) {
 		$this->oldtag = trim($oldtag);
 		$this->newtag = trim($newtag);
@@ -78,7 +84,8 @@ class AliasEditor extends Extension {
 			}
 			else if($event->get_arg(0) == "export") {
 				$page->set_mode("data");
-				$page->set_type("text/plain");
+				$page->set_type("text/csv");
+				$page->set_filename("aliases.csv");
 				$page->set_data($this->get_alias_csv($database));
 			}
 			else if($event->get_arg(0) == "import") {
@@ -124,33 +131,48 @@ class AliasEditor extends Extension {
 		}
 	}
 
+	/**
+	 * @param Database $database
+	 * @return string
+	 */
 	private function get_alias_csv(Database $database) {
 		$csv = "";
 		$aliases = $database->get_pairs("SELECT oldtag, newtag FROM aliases ORDER BY newtag");
 		foreach($aliases as $old => $new) {
-			$csv .= "$old,$new\n";
+			$csv .= "\"$old\",\"$new\"\n";
 		}
 		return $csv;
 	}
 
+	/**
+	 * @param Database $database
+	 * @param string $csv
+	 */
 	private function add_alias_csv(Database $database, /*string*/ $csv) {
 		$csv = str_replace("\r", "\n", $csv);
 		foreach(explode("\n", $csv) as $line) {
-			$parts = explode(",", $line);
+			$parts = str_getcsv($line);
 			if(count($parts) == 2) {
-				$pair = array("oldtag" => $parts[0], "newtag" => $parts[1]);
-				if(!$database->get_row("SELECT * FROM aliases WHERE oldtag=:oldtag AND lower(newtag)=lower(:newtag)", $pair)){
-					if(!$database->get_row("SELECT * FROM aliases WHERE oldtag=:newtag", array("newtag" => $pair['newtag']))){
-						$database->execute("INSERT INTO aliases(oldtag, newtag) VALUES(:oldtag, :newtag)", $pair);
-					}
+				try {
+					$aae = new AddAliasEvent($parts[0], $parts[1]);
+					send_event($aae);
+				}
+				catch(AddAliasException $ex) {
+					$this->theme->display_error(500, "Error adding alias", $ex->getMessage());
 				}
 			}
 		}
 	}
 
-	// add alias *after* mass tag editing, else the MTE will
-	// search for the images and be redirected to the alias,
-	// missing out the images tagged with the oldtag
+	/**
+	 * Get the priority for this extension.
+	 *
+	 * Add alias *after* mass tag editing, else the MTE will
+	 * search for the images and be redirected to the alias,
+	 * missing out the images tagged with the old tag.
+	 *
+	 * @return int
+	 */
 	public function get_priority() {return 60;}
 }
 

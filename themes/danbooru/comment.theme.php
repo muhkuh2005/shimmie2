@@ -1,6 +1,12 @@
 <?php
 
 class CustomCommentListTheme extends CommentListTheme {
+	/**
+	 * @param array $images
+	 * @param int $page_number
+	 * @param int $total_pages
+	 * @param bool $can_post
+	 */
 	public function display_comment_list($images, $page_number, $total_pages, $can_post) {
 		global $config, $page, $user;
 
@@ -44,7 +50,7 @@ class CustomCommentListTheme extends CommentListTheme {
 			}
 			$p = autodate($image->posted);
 
-			$r = class_exists("Ratings") ? "<b>Rating</b> ".Ratings::rating_to_human($image->rating) : "";
+			$r = ext_is_live("Ratings") ? "<b>Rating</b> ".Ratings::rating_to_human($image->rating) : "";
 			$comment_html =   "<b>Date</b> $p $s <b>User</b> $un $s $r<br><b>Tags</b> $t<p>&nbsp;";
 
 			$comment_count = count($comments);
@@ -86,8 +92,12 @@ class CustomCommentListTheme extends CommentListTheme {
 		// no recent comments in this theme
 	}
 
-
-	protected function comment_to_html($comment, $trim=false) {
+	/**
+	 * @param Comment $comment
+	 * @param bool $trim
+	 * @return string
+	 */
+	protected function comment_to_html(Comment $comment, $trim=false) {
 		global $user;
 
 		$tfe = new TextFormattingEvent($comment->comment);

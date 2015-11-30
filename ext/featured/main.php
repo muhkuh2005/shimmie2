@@ -60,16 +60,16 @@ class Featured extends Extension {
 		global $config, $database, $page, $user;
 		$fid = $config->get_int("featured_id");
 		if($fid > 0) {
-			$image = $database->cache->get("featured_image_object-$fid");
+			$image = $database->cache->get("featured_image_object:$fid");
 			if($image === false) {
 				$image = Image::by_id($fid);
 				if($image) { // make sure the object is fully populated before saving
 					$image->get_tag_array();
 				}
-				$database->cache->set("featured_image_object-$fid", $image, 600);
+				$database->cache->set("featured_image_object:$fid", $image, 600);
 			}
 			if(!is_null($image)) {
-				if(class_exists("Ratings")) {
+				if(ext_is_live("Ratings")) {
 					if(strpos(Ratings::get_user_privs($user), $image->rating) === FALSE) {
 						return;
 					}

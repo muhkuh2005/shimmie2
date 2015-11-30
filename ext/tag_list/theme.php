@@ -1,13 +1,23 @@
 <?php
 
 class TagListTheme extends Themelet {
-	var $heading = "";
-	var $list = "";
+	/** @var string  */
+	public $heading = "";
+	/** @var string|string[]  */
+	public $list = "";
 
+	public $navigation;
+
+	/**
+	 * @param string $text
+	 */
 	public function set_heading($text) {
 		$this->heading = $text;
 	}
 
+	/**
+	 * @param string|string[] $list
+	 */
 	public function set_tag_list($list) {
 		$this->list = $list;
 	}
@@ -105,7 +115,7 @@ class TagListTheme extends Themelet {
 
 		foreach($tag_infos as $row) {
 			$split = $this->return_tag($row, $tag_category_dict);
-			$category = $split[0];
+			//$category = $split[0];
 			$tag_html = $split[1];
 			$main_html .= $tag_html . '<br />';
 		}
@@ -141,7 +151,7 @@ class TagListTheme extends Themelet {
 
 		foreach($tag_infos as $row) {
 			$split = self::return_tag($row, $tag_category_dict);
-			$category = $split[0];
+			//$category = $split[0];
 			$tag_html = $split[1];
 			$main_html .= $tag_html . '<br />';
 		}
@@ -173,7 +183,7 @@ class TagListTheme extends Themelet {
 
 		foreach($tag_infos as $row) {
 			$split = self::return_tag($row, $tag_category_dict);
-			$category = $split[0];
+			//$category = $split[0];
 			$tag_html = $split[1];
 			$main_html .= $tag_html . '<br />';
 		}
@@ -219,6 +229,11 @@ class TagListTheme extends Themelet {
 		return array($category, $display_html);
 	}
 
+	/**
+	 * @param string $tag
+	 * @param string[] $tags
+	 * @return string
+	 */
 	protected function ars(/*string*/ $tag, /*array(string)*/ $tags) {
 		assert(is_array($tags));
 
@@ -234,6 +249,11 @@ class TagListTheme extends Themelet {
 		return $html;
 	}
 
+	/**
+	 * @param array $tags
+	 * @param string $tag
+	 * @return string
+	 */
 	protected function get_remove_link($tags, $tag) {
 		if(!in_array($tag, $tags) && !in_array("-$tag", $tags)) {
 			return "";
@@ -245,6 +265,11 @@ class TagListTheme extends Themelet {
 		}
 	}
 
+	/**
+	 * @param array $tags
+	 * @param string $tag
+	 * @return string
+	 */
 	protected function get_add_link($tags, $tag) {
 		if(in_array($tag, $tags)) {
 			return "";
@@ -256,6 +281,11 @@ class TagListTheme extends Themelet {
 		}
 	}
 
+	/**
+	 * @param array $tags
+	 * @param string $tag
+	 * @return string
+	 */
 	protected function get_subtract_link($tags, $tag) {
 		if(in_array("-$tag", $tags)) {
 			return "";
@@ -267,6 +297,10 @@ class TagListTheme extends Themelet {
 		}
 	}
 
+	/**
+	 * @param string $tag
+	 * @return string
+	 */
 	protected function tag_link($tag) {
 		$u_tag = url_escape($tag);
 		return make_link("post/list/$u_tag/1");

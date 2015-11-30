@@ -20,7 +20,7 @@ class UploadTheme extends Themelet {
 			".make_form(make_link("upload"), "POST", $multipart=True, 'file_upload')."
 				<table id='large_upload_form' class='vert'>
 					$upload_list
-					<tr><td width='20'>Tags<td colspan='5'><input name='tags' type='text' placeholder='tagme' class='autocomplete_tags'></td></tr>
+					<tr><td width='20'>Tags<td colspan='5'><input name='tags' type='text' placeholder='tagme' class='autocomplete_tags' autocomplete='off'></td></tr>
 					<tr><td>Source</td><td colspan='5'><input name='source' type='text'></td></tr>
 					<tr><td colspan='6'><input id='uploadbutton' type='submit' value='Post'></td></tr>
 				</table>
@@ -37,6 +37,9 @@ class UploadTheme extends Themelet {
 		}
 	}
 
+	/**
+	 * @return string
+	 */
 	protected function h_upload_list_1() {
 		global $config;
 		$upload_list = "";
@@ -57,7 +60,7 @@ class UploadTheme extends Themelet {
 					<tr>
 						<td colspan='2'><input type='file' name='data$i'></td>
 						<td colspan='2'><input type='text' name='url$i'</td>
-						<td colspan='2'><input type='text' name='tags$i'></td>
+						<td colspan='2'><input type='text' name='tags$i' class='autocomplete_tags' autocomplete='off'></td>
 					</tr>
 				";
 			}
@@ -74,7 +77,7 @@ class UploadTheme extends Themelet {
 				$upload_list .= "
 					<tr>
 						<td colspan='4'><input type='file' name='data$i'></td>
-						<td colspan='2'><input type='text' name='tags$i'></td>
+						<td colspan='2'><input type='text' name='tags$i' class='autocomplete_tags' autocomplete='off'></td>
 					</tr>
 				";
 			}
@@ -83,6 +86,9 @@ class UploadTheme extends Themelet {
 		return $upload_list;
 	}
 
+	/**
+	 * @return string
+	 */
 	protected function h_upload_List_2() {
 		global $config;
 
@@ -180,6 +186,9 @@ class UploadTheme extends Themelet {
 		return $upload_list;
 	}
 
+	/**
+	 * @return string
+	 */
 	protected function h_bookmarklets() {
 		global $config;
 		$link = make_http(make_link("upload"));
@@ -232,7 +241,12 @@ class UploadTheme extends Themelet {
 		return $html;
 	}
 
-	/* only allows 1 file to be uploaded - for replacing another image file */
+	/**
+	 * Only allows 1 file to be uploaded - for replacing another image file.
+	 *
+	 * @param Page $page
+	 * @param int $image_id
+	 */
 	public function display_replace_page(Page $page, /*int*/ $image_id) {
 		global $config, $page;
 		$tl_enabled = ($config->get_string("transload_engine", "none") != "none");
@@ -254,7 +268,7 @@ class UploadTheme extends Themelet {
 		$max_kb = to_shorthand_int($max_size);
 		
 		$image = Image::by_id($image_id);
-		$thumbnail = $this->build_thumb_html($image, null);
+		$thumbnail = $this->build_thumb_html($image);
 		
 		$html = "
 				<p>Replacing Image ID ".$image_id."<br>Please note: You will have to refresh the image page, or empty your browser cache.</p>"
@@ -275,7 +289,11 @@ class UploadTheme extends Themelet {
 		$page->add_block(new NavBlock());
 		$page->add_block(new Block("Upload Replacement Image", $html, "main", 20));
 	}
-	
+
+	/**
+	 * @param Page $page
+	 * @param bool $ok
+	 */
 	public function display_upload_status(Page $page, /*bool*/ $ok) {
 		if($ok) {
 			$page->set_mode("redirect");
@@ -288,10 +306,18 @@ class UploadTheme extends Themelet {
 		}
 	}
 
+	/**
+	 * @param Page $page
+	 * @param string $title
+	 * @param string $message
+	 */
 	public function display_upload_error(Page $page, /*string*/ $title, /*string*/ $message) {
 		$page->add_block(new Block($title, $message));
 	}
 
+	/**
+	 * @return string
+	 */
 	protected function build_upload_block() {
 		global $config;
 
@@ -310,7 +336,7 @@ class UploadTheme extends Themelet {
 			<div class='mini_upload'>
 			".make_form(make_link("upload"), "POST", $multipart=True)."
 				$upload_list
-				<input name='tags' type='text' placeholder='tagme' class='autocomplete_tags' required='required'>
+				<input name='tags' type='text' placeholder='tagme' class='autocomplete_tags' required='required' autocomplete='off'>
 				<input type='submit' value='Post'>
 			</form>
 			<small>(Max file size is $max_kb)</small>

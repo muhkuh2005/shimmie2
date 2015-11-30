@@ -82,7 +82,7 @@ function sql_escape($input) {
  * Turn all manner of HTML / INI / JS / DB booleans into a PHP one
  *
  * @param $input
- * @return boolean
+ * @return bool
  */
 function bool_escape($input) {
 	/*
@@ -124,6 +124,31 @@ function no_escape($input) {
 	return $input;
 }
 
+/**
+ * @param int $val
+ * @param int|null $min
+ * @param int|null $max
+ * @return int
+ */
+function clamp($val, $min, $max) {
+	if(!is_numeric($val) || (!is_null($min) && $val < $min)) {
+		$val = $min;
+	}
+	if(!is_null($max) && $val > $max) {
+		$val = $max;
+	}
+	if(!is_null($min) && !is_null($max)) {
+		assert('$val >= $min && $val <= $max', "$min <= $val <= $max");
+	}
+	return $val;
+}
+
+/**
+ * @param string $name
+ * @param array $attrs
+ * @param array $children
+ * @return string
+ */
 function xml_tag($name, $attrs=array(), $children=array()) {
 	$xml = "<$name ";
 	foreach($attrs as $k => $v) {
@@ -228,7 +253,7 @@ function autodate($date, $html=true) {
  * Check if a given string is a valid date-time. ( Format: yyyy-mm-dd hh:mm:ss )
  *
  * @param $dateTime
- * @return boolean
+ * @return bool
  */
 function isValidDateTime($dateTime) {
 	if (preg_match("/^(\d{4})-(\d{2})-(\d{2}) ([01][0-9]|2[0-3]):([0-5][0-9]):([0-5][0-9])$/", $dateTime, $matches)) {
@@ -244,7 +269,7 @@ function isValidDateTime($dateTime) {
  * Check if a given string is a valid date. ( Format: yyyy-mm-dd )
  *
  * @param $date
- * @return boolean
+ * @return bool
  */
 function isValidDate($date) {
 	if (preg_match("/^(\d{4})-(\d{2})-(\d{2})$/", $date, $matches)) {
@@ -255,6 +280,94 @@ function isValidDate($date) {
 	}
 
 	return false;
+}
+
+function validate_input($inputs) {
+	$outputs = array();
+
+	foreach($inputs as $key => $validations) {
+		$flags = explode(',', $validations);
+
+		if(in_array('bool', $flags) && !isset($_POST[$key])) {
+			$_POST[$key] = 'off';
+		}
+
+		if(in_array('optional', $flags)) {
+			if(!isset($_POST[$key]) || trim($_POST[$key]) == "") {
+				$outputs[$key] = null;
+				continue;
+			}
+		}
+		if(!isset($_POST[$key]) || trim($_POST[$key]) == "") {
+			throw new InvalidInput("Input '$key' not set");
+		}
+
+		$value = trim($_POST[$key]);
+
+		if(in_array('user_id', $flags)) {
+			$id = int_escape($value);
+			if(in_array('exists', $flags)) {
+				if(is_null(User::by_id($id))) {
+					throw new InvalidInput("User #$id does not exist");
+				}
+			}
+			$outputs[$key] = $id;
+		}
+		else if(in_array('user_name', $flags)) {
+			if(strlen($value) < 1) {
+				throw new InvalidInput("Username must be at least 1 character");
+			}
+			else if(!preg_match('/^[a-zA-Z0-9-_]+$/', $value)) {
+				throw new InvalidInput(
+						"Username contains invalid characters. Allowed characters are ".
+						"letters, numbers, dash, and underscore");
+			}
+			$outputs[$key] = $value;
+		}
+		else if(in_array('user_class', $flags)) {
+			global $_shm_user_classes;
+			if(!array_key_exists($value, $_shm_user_classes)) {
+				throw new InvalidInput("Invalid user class: ".html_escape($value));
+			}
+			$outputs[$key] = $value;
+		}
+		else if(in_array('email', $flags)) {
+			$outputs[$key] = trim($value);
+		}
+		else if(in_array('password', $flags)) {
+			$outputs[$key] = $value;
+		}
+		else if(in_array('int', $flags)) {
+			$value = trim($value);
+			if(empty($value) || !is_numeric($value)) {
+				throw new InvalidInput("Invalid int: ".html_escape($value));
+			}
+			$outputs[$key] = (int)$value;
+		}
+		else if(in_array('bool', $flags)) {
+			$outputs[$key] = bool_escape($value);
+		}
+		else if(in_array('string', $flags)) {
+			if(in_array('trim', $flags)) {
+				$value = trim($value);
+			}
+			if(in_array('lower', $flags)) {
+				$value = strtolower($value);
+			}
+			if(in_array('not-empty', $flags)) {
+				throw new InvalidInput("$key must not be blank");
+			}
+			if(in_array('nullify', $flags)) {
+				if(empty($value)) $value = null;
+			}
+			$outputs[$key] = $value;
+		}
+		else {
+			throw new InvalidInput("Unknown validation '$validations'");
+		}
+	}
+
+	return $outputs;
 }
 
 /**
@@ -322,9 +435,7 @@ function make_link($page=null, $query=null) {
 	if(is_null($page)) $page = $config->get_string('main_page');
 
 	if(NICE_URLS || $config->get_bool('nice_urls', false)) {
-		#$full = "http://" . $_SERVER["SERVER_NAME"] . $_SERVER["PHP_SELF"];
-		$full = $_SERVER["PHP_SELF"];
-		$base = str_replace('/'.basename($_SERVER["SCRIPT_FILENAME"]), "", $full);
+		$base = str_replace('/'.basename($_SERVER["SCRIPT_FILENAME"]), "", $_SERVER["PHP_SELF"]);
 	}
 	else {
 		$base = "./".basename($_SERVER["SCRIPT_FILENAME"])."?q=";
@@ -373,7 +484,7 @@ function modify_url($url, $changes) {
 		unset($changes['q']);
 	}
 	else {
-		$base = $_GET['q'];
+		$base = _get_query();
 	}
 
 	if(isset($params['q'])) {
@@ -396,10 +507,18 @@ function modify_url($url, $changes) {
  * @return string
  */
 function make_http(/*string*/ $link) {
-	if(strpos($link, "ttp://") > 0) return $link;
-	if(strlen($link) > 0 && $link[0] != '/') $link = get_base_href().'/'.$link;
-	$link = "http://".$_SERVER["HTTP_HOST"].$link;
+	if(strpos($link, "://") > 0) {
+		return $link;
+	}
+
+	if(strlen($link) > 0 && $link[0] != '/') {
+		$link = get_base_href() . '/' . $link;
+	}
+
+	$protocol = is_https_enabled() ? "https://" : "http://";
+	$link = $protocol . $_SERVER["HTTP_HOST"] . $link;
 	$link = str_replace("/./", "/", $link);
+
 	return $link;
 }
 
@@ -427,6 +546,10 @@ function make_form($target, $method="POST", $multipart=False, $form_id="", $onsu
 	return '<form action="'.$target.'" method="'.$method.'" '.$extra.'>'.$auth;
 }
 
+/**
+ * @param string $file The filename
+ * @return string
+ */
 function mtimefile($file) {
 	$data_href = get_base_href();
 	$mtime = filemtime($file);
@@ -445,8 +568,11 @@ function get_theme() {
 	return $theme;
 }
 
-/*
- * like glob, with support for matching very long patterns with braces
+/**
+ * Like glob, with support for matching very long patterns with braces.
+ *
+ * @param string $pattern
+ * @return array
  */
 function zglob($pattern) {
 	$results = array();
@@ -470,6 +596,9 @@ function zglob($pattern) {
 * CAPTCHA abstraction                                                       *
 \* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
+/**
+ * @return string
+ */
 function captcha_get_html() {
 	global $config, $user;
 
@@ -492,6 +621,9 @@ function captcha_get_html() {
 	return $captcha;
 }
 
+/**
+ * @return bool
+ */
 function captcha_check() {
 	global $config, $user;
 
@@ -531,13 +663,21 @@ function captcha_check() {
 \* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
 /**
+ * Check if HTTPS is enabled for the server.
+ *
+ * @return bool True if HTTPS is enabled
+ */
+function is_https_enabled() {
+	return (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off');
+}
+
+/**
  * Get MIME type for file
  *
  * The contents of this function are taken from the __getMimeType() function
  * from the "Amazon S3 PHP class" which is Copyright (c) 2008, Donovan Schönknecht
  * and released under the 'Simplified BSD License'.
  *
- * @internal Used to get mime types
  * @param string &$file File path
  * @param string $ext
  * @param bool $list
@@ -593,7 +733,10 @@ function getMimeType($file, $ext="", $list=false) {
 	return 'application/octet-stream';
 }
 
-
+/**
+ * @param string $mime_type
+ * @return bool|string
+ */
 function getExtension ($mime_type){
 	if(empty($mime_type)){
 		return false;
@@ -602,66 +745,6 @@ function getExtension ($mime_type){
 	$extensions = getMimeType(null, null, true);
 	$ext = array_search($mime_type, $extensions);
 	return ($ext ? $ext : false);
-}
-
-/**
- * @private
- */
-function _version_check() {
-	$min_version = "5.3.0";
-	if(version_compare(PHP_VERSION, $min_version) == -1) {
-		print "
-Currently SCore Engine doesn't support versions of PHP lower than $min_version --
-if your web host is running an older version, they are dangerously out of
-date and you should plan on moving elsewhere.
-";
-		exit;
-	}
-}
-
-/**
- * @private
- */
-function is_cli() {
-	return (PHP_SAPI === 'cli');
-}
-
-
-$_execs = 0;
-/**
- * $db is the connection object
- *
- * @private
- */
-function _count_execs($db, $sql, $inputarray) {
-	global $_execs;
-	if ((defined(DEBUG_SQL) && DEBUG_SQL === true) || (!defined(DEBUG_SQL) && @$_GET['DEBUG_SQL'])) {
-		$fp = @fopen("data/sql.log", "a");
-		if($fp) {
-			if(isset($inputarray) && is_array($inputarray)) {
-				fwrite($fp, preg_replace('/\s+/msi', ' ', $sql)." -- ".join(", ", $inputarray)."\n");
-			}
-			else {
-				fwrite($fp, preg_replace('/\s+/msi', ' ', $sql)."\n");
-			}
-			fclose($fp);
-		}
-		else {
-			# WARNING:
-			# SQL queries happen before the event system is fully initialised
-			# (eg, "select theme from config" happens before "load themes"),
-			# so using the event system to report an error will create some
-			# really weird looking bugs.
-			#
-			#log_error("core", "failed to open sql.log for appending");
-		}
-	}
-	if (!is_array($inputarray)) $_execs++;
-	# handle 2-dimensional input arrays
-	else if (is_array(reset($inputarray))) $_execs += sizeof($inputarray);
-	else $_execs++;
-	# in PHP4.4 and PHP5, we need to return a value by reference
-	$null = null; return $null;
 }
 
 /**
@@ -742,50 +825,28 @@ function get_session_ip(Config $config) {
 	return $addr;
 }
 
-/**
- * similar to $_COOKIE[$name], but $name has the site-wide cookie
- * prefix prepended to it, eg username -> shm_username, to prevent
- * conflicts from multiple installs within one domain.
- */
-function get_prefixed_cookie(/*string*/ $name) {
-	global $config;
-	$full_name = COOKIE_PREFIX."_".$name;
-	if(isset($_COOKIE[$full_name])) {
-		return $_COOKIE[$full_name];
-	}
-	else {
-		return null;
-	}
-}
 
 /**
- * The counterpart for get_prefixed_cookie, this works like php's
- * setcookie method, but prepends the site-wide cookie prefix to
- * the $name argument before doing anything.
- */
-function set_prefixed_cookie($name, $value, $time, $path) {
-	global $config;
-	$full_name = COOKIE_PREFIX."_".$name;
-	setcookie($full_name, $value, $time, $path);
-}
-
-/**
- * Set (or extend) a flash-message cookie
+ * Set (or extend) a flash-message cookie.
  *
  * This can optionally be done at the same time as saving a log message with log_*()
  *
  * Generally one should flash a message in onPageRequest and log a message wherever
  * the action actually takes place (eg onWhateverElse) - but much of the time, actions
  * are taken from within onPageRequest...
+ *
+ * @param string $text
+ * @param string $type
  */
 function flash_message(/*string*/ $text, /*string*/ $type="info") {
-	$current = get_prefixed_cookie("flash_message");
+	global $page;
+	$current = $page->get_cookie("flash_message");
 	if($current) {
 		$text = $current . "\n" . $text;
 	}
 	# the message should be viewed pretty much immediately,
 	# so 60s timeout should be more than enough
-	set_prefixed_cookie("flash_message", $text, time()+60, "/");
+	$page->add_cookie("flash_message", $text, time()+60, "/");
 }
 
 /**
@@ -799,10 +860,11 @@ function flash_message(/*string*/ $text, /*string*/ $type="info") {
  * @return string
  */
 function get_base_href() {
+	if(defined("BASE_HREF")) return BASE_HREF;
 	$possible_vars = array('SCRIPT_NAME', 'PHP_SELF', 'PATH_INFO', 'ORIG_PATH_INFO');
 	$ok_var = null;
 	foreach($possible_vars as $var) {
-		if(substr($_SERVER[$var], -4) === '.php') {
+		if(isset($_SERVER[$var]) && substr($_SERVER[$var], -4) === '.php') {
 			$ok_var = $_SERVER[$var];
 			break;
 		}
@@ -816,10 +878,9 @@ function get_base_href() {
 }
 
 /**
- * A shorthand way to send a TextFormattingEvent and get the
- * results
+ * A shorthand way to send a TextFormattingEvent and get the results.
  *
- * @param $string
+ * @param string $string
  * @return string
  */
 function format_text(/*string*/ $string) {
@@ -828,6 +889,12 @@ function format_text(/*string*/ $string) {
 	return $tfe->formatted;
 }
 
+/**
+ * @param string $base
+ * @param string $hash
+ * @param bool $create
+ * @return string
+ */
 function warehouse_path(/*string*/ $base, /*string*/ $hash, /*bool*/ $create=true) {
 	$ab = substr($hash, 0, 2);
 	$cd = substr($hash, 2, 2);
@@ -841,12 +908,21 @@ function warehouse_path(/*string*/ $base, /*string*/ $hash, /*bool*/ $create=tru
 	return $pa;
 }
 
+/**
+ * @param string $filename
+ * @return string
+ */
 function data_path($filename) {
 	$filename = "data/" . $filename;
 	if(!file_exists(dirname($filename))) mkdir(dirname($filename), 0755, true);
 	return $filename;
 }
 
+/**
+ * @param string $url
+ * @param string $mfile
+ * @return array|bool
+ */
 function transload($url, $mfile) {
 	global $config;
 
@@ -883,27 +959,20 @@ function transload($url, $mfile) {
 	}
 
 	if($config->get_string("transload_engine") === "fopen") {
-		$fp = @fopen($url, "r");
-		if(!$fp) {
+		$fp_in = @fopen($url, "r");
+		$fp_out = fopen($mfile, "w");
+		if(!$fp_in || !$fp_out) {
 			return false;
 		}
-		$data = "";
 		$length = 0;
-		while(!feof($fp) && $length <= $config->get_int('upload_size')) {
-			$data .= fread($fp, 8192);
-			$length = strlen($data);
+		while(!feof($fp_in) && $length <= $config->get_int('upload_size')) {
+			$data = fread($fp_in, 8192);
+			$length += strlen($data);
+			fwrite($fp_out, $data);
 		}
-		fclose($fp);
+		fclose($fp_in);
+		fclose($fp_out);
 
-		$fp = fopen($mfile, "w");
-		fwrite($fp, $data);
-		fclose($fp);
-
-		//
-		// Scrutinizer-ci complains that $http_response_header does not exist,
-		// however, $http_response_header is actually a super-global.
-		// I have filed a bug with PHP-Analyzer here: https://github.com/scrutinizer-ci/php-analyzer/issues/212
-		//
 		$headers = http_parse_headers(implode("\n", $http_response_header));
 
 		return $headers;
@@ -935,16 +1004,49 @@ if (!function_exists('http_parse_headers')) { #http://www.php.net/manual/en/func
 	}
 }
 
-$_included = array();
+/**
+ * HTTP Headers can sometimes be lowercase which will cause issues.
+ * In cases like these, we need to make sure to check for them if the camelcase version does not exist.
+ * 
+ * @param array $headers
+ * @param mixed $name
+ * @return mixed
+ */
+function findHeader ($headers, $name) {
+	if (!is_array($headers)) {
+		return false;
+	}
+	
+	$header = false;
+
+	if(array_key_exists($name, $headers)) {
+		$header = $headers[$name];
+	} else {
+		$headers = array_change_key_case($headers); // convert all to lower case.
+		$lc_name = strtolower($name);
+		
+		if(array_key_exists($lc_name, $headers)) {
+			$header = $headers[$lc_name];
+		}
+	}
+
+	return $header;
+}
+
 /**
  * Get the active contents of a .php file
+ *
+ * @param string $fname
+ * @return string|null
  */
 function manual_include($fname) {
-	if(!file_exists($fname)) return;
+	static $included = array();
 
-	global $_included;
-	if(in_array($fname, $_included)) return;
-	$_included[] = $fname;
+	if(!file_exists($fname)) return null;
+
+	if(in_array($fname, $included)) return null;
+
+	$included[] = $fname;
 
 	print "$fname\n";
 
@@ -960,10 +1062,6 @@ function manual_include($fname) {
 
 	// @include_once is used for user-creatable config files
 	$text = preg_replace('/@include_once "(.*)";/e', "manual_include('$1')", $text);
-
-	// wibble the defines for HipHop's sake
-	$text = str_replace('function _d(', '// function _messed_d(', $text);
-	$text = preg_replace('/_d\("(.*)", (.*)\);/', 'if(!defined("$1")) define("$1", $2);', $text);
 
 	return $text;
 }
@@ -990,44 +1088,53 @@ define("SCORE_LOG_NOTSET", 0);
  * $flash = null (default) - log to server only, no flash message
  * $flash = true           - show the message to the user as well
  * $flash = "some string"  - log the message, flash the string
+ *
+ * @param string $section
+ * @param int $priority
+ * @param string $message
+ * @param bool|string $flash
+ * @param array $args
  */
-function log_msg(/*string*/ $section, /*int*/ $priority, /*string*/ $message, $flash=null, $args=array()) {
+function log_msg(/*string*/ $section, /*int*/ $priority, /*string*/ $message, $flash=false, $args=array()) {
 	send_event(new LogEvent($section, $priority, $message, $args));
 	$threshold = defined("CLI_LOG_LEVEL") ? CLI_LOG_LEVEL : 0;
-	if(is_cli() && ($priority >= $threshold)) {
+
+	if((PHP_SAPI === 'cli') && ($priority >= $threshold)) {
 		print date("c")." $section: $message\n";
 	}
-	if($flash === True) {
+	if($flash === true) {
 		flash_message($message);
 	}
-	else if(!is_null($flash)) {
+	else if(is_string($flash)) {
 		flash_message($flash);
 	}
 }
 
 // More shorthand ways of logging
-function log_debug(   /*string*/ $section, /*string*/ $message, $flash=null, $args=array()) {log_msg($section, SCORE_LOG_DEBUG, $message, $flash, $args);}
-function log_info(    /*string*/ $section, /*string*/ $message, $flash=null, $args=array()) {log_msg($section, SCORE_LOG_INFO, $message, $flash, $args);}
-function log_warning( /*string*/ $section, /*string*/ $message, $flash=null, $args=array()) {log_msg($section, SCORE_LOG_WARNING, $message, $flash, $args);}
-function log_error(   /*string*/ $section, /*string*/ $message, $flash=null, $args=array()) {log_msg($section, SCORE_LOG_ERROR, $message, $flash, $args);}
-function log_critical(/*string*/ $section, /*string*/ $message, $flash=null, $args=array()) {log_msg($section, SCORE_LOG_CRITICAL, $message, $flash, $args);}
+function log_debug(   /*string*/ $section, /*string*/ $message, $flash=false, $args=array()) {log_msg($section, SCORE_LOG_DEBUG, $message, $flash, $args);}
+function log_info(    /*string*/ $section, /*string*/ $message, $flash=false, $args=array()) {log_msg($section, SCORE_LOG_INFO, $message, $flash, $args);}
+function log_warning( /*string*/ $section, /*string*/ $message, $flash=false, $args=array()) {log_msg($section, SCORE_LOG_WARNING, $message, $flash, $args);}
+function log_error(   /*string*/ $section, /*string*/ $message, $flash=false, $args=array()) {log_msg($section, SCORE_LOG_ERROR, $message, $flash, $args);}
+function log_critical(/*string*/ $section, /*string*/ $message, $flash=false, $args=array()) {log_msg($section, SCORE_LOG_CRITICAL, $message, $flash, $args);}
+
 
 /**
- * Get a unique ID for this request, useful for grouping log messages
+ * Get a unique ID for this request, useful for grouping log messages.
+ *
+ * @return null|string
  */
-$_request_id = null;
 function get_request_id() {
-	global $_request_id;
-	if(!$_request_id) {
+	static $request_id = null;
+	if(!$request_id) {
 		// not completely trustworthy, as a user can spoof this
 		if(@$_SERVER['HTTP_X_VARNISH']) {
-			$_request_id = $_SERVER['HTTP_X_VARNISH'];
+			$request_id = $_SERVER['HTTP_X_VARNISH'];
 		}
 		else {
-			$_request_id = "P" . uniqid();
+			$request_id = "P" . uniqid();
 		}
 	}
-	return $_request_id;
+	return $request_id;
 }
 
 
@@ -1119,6 +1226,8 @@ function ip_in_range($IP, $CIDR) {
  *
  * from a patch by Christian Walde; only intended for use in the
  * "extension manager" extension, but it seems to fit better here
+ *
+ * @param string $f
  */
 function deltree($f) {
 	//Because Windows (I know, bad excuse)
@@ -1162,6 +1271,9 @@ function deltree($f) {
  * Copy an entire file hierarchy
  *
  * from a comment on http://uk.php.net/copy
+ *
+ * @param string $source
+ * @param string $target
  */
 function full_copy($source, $target) {
 	if(is_dir($source)) {
@@ -1188,174 +1300,121 @@ function full_copy($source, $target) {
 	}
 }
 
+/**
+ * Return a list of all the regular files in a directory and subdirectories
+ *
+ * @param string $base
+ * @param string $_sub_dir
+ * @return array file list
+ */
+function list_files(/*string*/ $base, $_sub_dir="") {
+	assert(is_dir($base));
+
+	$file_list = array();
+
+	$files = array();
+	$dir = opendir("$base/$_sub_dir");
+	while($f = readdir($dir)) {
+		$files[] = $f;
+	}
+	closedir($dir);
+	sort($files);
+
+	foreach($files as $filename) {
+		$full_path = "$base/$_sub_dir/$filename";
+
+		if(is_link($full_path)) {
+			// ignore
+		}
+		else if(is_dir($full_path)) {
+			if(!($filename == "." || $filename == "..")) {
+				//subdirectory found
+				$file_list = array_merge(
+					$file_list,
+					list_files($base, "$_sub_dir/$filename")
+				);
+			}
+		}
+		else {
+			$full_path = str_replace("//", "/", $full_path);
+			$file_list[] = $full_path;
+		}
+	}
+
+	return $file_list;
+}
+
+
+function path_to_tags($path) {
+    $matches = array();
+    if(preg_match("/\d+ - (.*)\.([a-zA-Z]+)/", basename($path), $matches)) {
+        $tags = $matches[1];
+    }
+    else {
+        $tags = dirname($path);
+        $tags = str_replace("/", " ", $tags);
+        $tags = str_replace("__", " ", $tags);
+        $tags = trim($tags);
+    }
+    return $tags;
+}
+
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *\
 * Event API                                                                 *
 \* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
 /** @private */
-$_event_listeners = array();
+global $_shm_event_listeners;
+$_shm_event_listeners = array();
 
-/**
- * Register an Extension
- */
-function add_event_listener(Extension $extension, $pos=50, $events=array()) {
-	global $_event_listeners;
-	$pos *= 100;
-	foreach($events as $event) {
-		while(isset($_event_listeners[$event][$pos])) {
-			$pos += 1;
+function _load_event_listeners() {
+	global $_shm_event_listeners;
+
+	ctx_log_start("Loading extensions");
+
+	$cache_path = data_path("cache/shm_event_listeners.php");
+	if(COMPILE_ELS && file_exists($cache_path)) {
+		require_once($cache_path);
+	}
+	else {
+		_set_event_listeners();
+
+		if(COMPILE_ELS) {
+			_dump_event_listeners($_shm_event_listeners, $cache_path);
 		}
-		$_event_listeners[$event][$pos] = $extension;
 	}
-}
 
-/** @private */
-$_event_count = 0;
-
-/**
- * Send an event to all registered Extensions
- */
-function send_event(Event $event) {
-	global $_event_listeners, $_event_count;
-	if(!isset($_event_listeners[get_class($event)])) return;
-	$method_name = "on".str_replace("Event", "", get_class($event));
-
-	ctx_log_start(get_class($event));
-	// SHIT: http://bugs.php.net/bug.php?id=35106
-	$my_event_listeners = $_event_listeners[get_class($event)];
-	ksort($my_event_listeners);
-	foreach($my_event_listeners as $listener) {
-		ctx_log_start(get_class($listener));
-		$listener->$method_name($event);
-		ctx_log_endok();
-	}
-	$_event_count++;
 	ctx_log_endok();
 }
 
+function _set_event_listeners() {
+	global $_shm_event_listeners;
+	$_shm_event_listeners = array();
 
-/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *\
-* Debugging functions                                                       *
-\* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
-
-// SHIT by default this returns the time as a string. And it's not even a
-// string representation of a number, it's two numbers separated by a space.
-// What the fuck were the PHP developers smoking.
-$_load_start = microtime(true);
-
-/**
- * Collects some debug information (execution time, memory usage, queries, etc)
- * and formats it to stick in the footer of the page.
- *
- * @return String of debug info to add to the page.
- */
-function get_debug_info() {
-	global $config, $_event_count, $database, $_execs, $_load_start;
-
-	$i_mem = sprintf("%5.2f", ((memory_get_peak_usage(true)+512)/1024)/1024);
-
-	if($config->get_string("commit_hash", "unknown") == "unknown"){
-		$commit = "";
-	}
-	else {
-		$commit = " (".$config->get_string("commit_hash").")";
-	}
-	$time = sprintf("%5.2f", microtime(true) - $_load_start);
-	$i_files = count(get_included_files());
-	$hits = $database->cache->get_hits();
-	$miss = $database->cache->get_misses();
-
-	$debug = "<br>Took $time seconds and {$i_mem}MB of RAM";
-	$debug .= "; Used $i_files files and $_execs queries";
-	$debug .= "; Sent $_event_count events";
-	$debug .= "; $hits cache hits and $miss misses";
-	$debug .= "; Shimmie version ". VERSION . $commit; // .", SCore Version ". SCORE_VERSION;
-
-	return $debug;
-}
-
-
-/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *\
-* Request initialisation stuff                                              *
-\* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
-
-/** @privatesection */
-
-function _stripslashes_r($arr) {
-	return is_array($arr) ? array_map('_stripslashes_r', $arr) : stripslashes($arr);
-}
-
-function _sanitise_environment() {
-	if(TIMEZONE) {
-		date_default_timezone_set(TIMEZONE);
-	}
-
-	if(DEBUG) {
-		error_reporting(E_ALL);
-	}
-
-	if(CONTEXT) {
-		ctx_set_log(CONTEXT);
-		ctx_log_start(@$_SERVER["REQUEST_URI"], true, true);
-	}
-
-	if(COVERAGE) {
-		_start_coverage();
-		register_shutdown_function("_end_coverage");
-	}
-
-	assert_options(ASSERT_ACTIVE, 1);
-	assert_options(ASSERT_BAIL, 1);
-
-	ob_start();
-
-	if(get_magic_quotes_gpc()) {
-		$_GET = _stripslashes_r($_GET);
-		$_POST = _stripslashes_r($_POST);
-		$_COOKIE = _stripslashes_r($_COOKIE);
-	}
-
-	if(is_cli()) {
-		if(isset($_SERVER['REMOTE_ADDR'])) {
-			die("CLI with remote addr? Confused, not taking the risk.");
-		}
-		$_SERVER['REMOTE_ADDR'] = "0.0.0.0";
-		$_SERVER['HTTP_HOST'] = "<cli command>";
-	}
-}
-
-function _get_themelet_files($_theme) {
-	$base_themelets = array();
-	if(file_exists('themes/'.$_theme.'/custompage.class.php')) $base_themelets[] = 'themes/'.$_theme.'/custompage.class.php';
-	$base_themelets[] = 'themes/'.$_theme.'/layout.class.php';
-	$base_themelets[] = 'themes/'.$_theme.'/themelet.class.php';
-
-	$ext_themelets = zglob("ext/{".ENABLED_EXTS."}/theme.php");
-	$custom_themelets = zglob('themes/'.$_theme.'/{'.ENABLED_EXTS.'}.theme.php');
-
-	return array_merge($base_themelets, $ext_themelets, $custom_themelets);
-}
-
-function _set_event_listeners($classes) {
-	global $_event_listeners;
-	$_event_listeners = array();
-
-	foreach($classes as $class) {
+	foreach(get_declared_classes() as $class) {
 		$rclass = new ReflectionClass($class);
 		if($rclass->isAbstract()) {
 			// don't do anything
 		}
 		elseif(is_subclass_of($class, "Extension")) {
-			$c = new $class();
-			$c->i_am($c);
-			$my_events = array();
-			foreach(get_class_methods($c) as $method) {
+			/** @var Extension $extension */
+			$extension = new $class();
+			$extension->i_am($extension);
+
+			// skip extensions which don't support our current database
+			if(!$extension->is_live()) continue;
+
+			foreach(get_class_methods($extension) as $method) {
 				if(substr($method, 0, 2) == "on") {
-					$my_events[] = substr($method, 2) . "Event";
+					$event = substr($method, 2) . "Event";
+					$pos = $extension->get_priority() * 100;
+					while(isset($_shm_event_listeners[$event][$pos])) {
+						$pos += 1;
+					}
+					$_shm_event_listeners[$event][$pos] = $extension;
 				}
 			}
-			add_event_listener($c, $c->get_priority(), $my_events);
 		}
 	}
 }
@@ -1372,7 +1431,7 @@ function _dump_event_listeners($event_listeners, $path) {
 		}
 	}
 
-	$p .= "\$_event_listeners = array(\n";
+	$p .= "\$_shm_event_listeners = array(\n";
 	foreach($event_listeners as $event => $listeners) {
 		$p .= "\t'$event' => array(\n";
 		foreach($listeners as $id => $listener) {
@@ -1386,27 +1445,179 @@ function _dump_event_listeners($event_listeners, $path) {
 	file_put_contents($path, $p);
 }
 
-function _load_extensions() {
-	global $_event_listeners;
+/**
+ * @param $ext_name string
+ * @return bool
+ */
+function ext_is_live($ext_name) {
+	if (class_exists($ext_name)) {
+		/** @var Extension $ext */
+		$ext = new $ext_name();
+		return $ext->is_live();
+	}
+	return false;
+}
 
-	ctx_log_start("Loading extensions");
 
-	if(COMPILE_ELS && file_exists("data/cache/event_listeners.php")) {
-		require_once("data/cache/event_listeners.php");
+/** @private */
+global $_shm_event_count;
+$_shm_event_count = 0;
+
+/**
+ * Send an event to all registered Extensions.
+ *
+ * @param Event $event
+ */
+function send_event(Event $event) {
+	global $_shm_event_listeners, $_shm_event_count;
+	if(!isset($_shm_event_listeners[get_class($event)])) return;
+	$method_name = "on".str_replace("Event", "", get_class($event));
+
+	// send_event() is performance sensitive, and with the number
+	// of times context gets called the time starts to add up
+	$ctx = constant('CONTEXT');
+
+	if($ctx) ctx_log_start(get_class($event));
+	// SHIT: http://bugs.php.net/bug.php?id=35106
+	$my_event_listeners = $_shm_event_listeners[get_class($event)];
+	ksort($my_event_listeners);
+	foreach($my_event_listeners as $listener) {
+		if($ctx) ctx_log_start(get_class($listener));
+		if(method_exists($listener, $method_name)) {
+			$listener->$method_name($event);
+		}
+		if($ctx) ctx_log_endok();
+	}
+	$_shm_event_count++;
+	if($ctx) ctx_log_endok();
+}
+
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *\
+* Debugging functions                                                       *
+\* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+// SHIT by default this returns the time as a string. And it's not even a
+// string representation of a number, it's two numbers separated by a space.
+// What the fuck were the PHP developers smoking.
+$_shm_load_start = microtime(true);
+
+/**
+ * Collects some debug information (execution time, memory usage, queries, etc)
+ * and formats it to stick in the footer of the page.
+ *
+ * @return string debug info to add to the page.
+ */
+function get_debug_info() {
+	global $config, $_shm_event_count, $database, $_shm_load_start;
+
+	$i_mem = sprintf("%5.2f", ((memory_get_peak_usage(true)+512)/1024)/1024);
+
+	if($config->get_string("commit_hash", "unknown") == "unknown"){
+		$commit = "";
 	}
 	else {
-		_set_event_listeners(get_declared_classes());
+		$commit = " (".$config->get_string("commit_hash").")";
+	}
+	$time = sprintf("%.2f", microtime(true) - $_shm_load_start);
+	$dbtime = sprintf("%.2f", $database->dbtime);
+	$i_files = count(get_included_files());
+	$hits = $database->cache->get_hits();
+	$miss = $database->cache->get_misses();
 
-		if(COMPILE_ELS) {
-			_dump_event_listeners($_event_listeners, data_path("cache/event_listeners.php"));
-		}
+	$debug = "<br>Took $time seconds (db:$dbtime) and {$i_mem}MB of RAM";
+	$debug .= "; Used $i_files files and {$database->query_count} queries";
+	$debug .= "; Sent $_shm_event_count events";
+	$debug .= "; $hits cache hits and $miss misses";
+	$debug .= "; Shimmie version ". VERSION . $commit; // .", SCore Version ". SCORE_VERSION;
+
+	return $debug;
+}
+
+function score_assert_handler($file, $line, $code, $desc = null) {
+	$file = basename($file);
+	print("Assertion failed at $file:$line: $code ($desc)");
+	/*
+	print("<pre>");
+	debug_print_backtrace();
+	print("</pre>");
+	*/
+}
+
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *\
+* Request initialisation stuff                                              *
+\* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+/** @privatesection */
+
+function _version_check() {
+	$min_version = "5.4.8";
+	if(version_compare(PHP_VERSION, $min_version) == -1) {
+		print "
+Currently SCore Engine doesn't support versions of PHP lower than $min_version --
+if your web host is running an older version, they are dangerously out of
+date and you should plan on moving elsewhere.
+";
+		exit;
+	}
+}
+
+function _sanitise_environment() {
+	if(TIMEZONE) {
+		date_default_timezone_set(TIMEZONE);
 	}
 
-	ctx_log_endok();
+	if(DEBUG) {
+		error_reporting(E_ALL);
+		assert_options(ASSERT_ACTIVE, 1);
+		assert_options(ASSERT_BAIL, 1);
+		assert_options(ASSERT_WARNING, 0);
+		assert_options(ASSERT_QUIET_EVAL, 1);
+		assert_options(ASSERT_CALLBACK, 'score_assert_handler');
+	}
+
+	if(CONTEXT) {
+		ctx_set_log(CONTEXT);
+	}
+
+	if(COVERAGE) {
+		_start_coverage();
+		register_shutdown_function("_end_coverage");
+	}
+
+	ob_start();
+
+	if(PHP_SAPI === 'cli') {
+		if(isset($_SERVER['REMOTE_ADDR'])) {
+			die("CLI with remote addr? Confused, not taking the risk.");
+		}
+		$_SERVER['REMOTE_ADDR'] = "0.0.0.0";
+		$_SERVER['HTTP_HOST'] = "<cli command>";
+	}
 }
+
+
+/**
+ * @param string $_theme
+ * @return array
+ */
+function _get_themelet_files($_theme) {
+	$base_themelets = array();
+	if(file_exists('themes/'.$_theme.'/custompage.class.php')) $base_themelets[] = 'themes/'.$_theme.'/custompage.class.php';
+	$base_themelets[] = 'themes/'.$_theme.'/layout.class.php';
+	$base_themelets[] = 'themes/'.$_theme.'/themelet.class.php';
+
+	$ext_themelets = zglob("ext/{".ENABLED_EXTS."}/theme.php");
+	$custom_themelets = zglob('themes/'.$_theme.'/{'.ENABLED_EXTS.'}.theme.php');
+
+	return array_merge($base_themelets, $ext_themelets, $custom_themelets);
+}
+
 
 /**
  * Used to display fatal errors to the web user.
+ * @param Exception $e
  */
 function _fatal_error(Exception $e) {
 	$version = VERSION;
@@ -1427,7 +1638,7 @@ function _fatal_error(Exception $e) {
 	<body>
 		<h1>Internal Error</h1>
 		<p><b>Message:</b> '.$message.'
-		<p><b>Version:</b> '.$version.'
+		<p><b>Version:</b> '.$version.' (on '.phpversion().')
 	</body>
 </html>
 ';
@@ -1438,6 +1649,9 @@ function _fatal_error(Exception $e) {
  *
  * Necessary because various servers and various clients
  * think that / is special...
+ *
+ * @param string $str
+ * @return string
  */
 function _decaret($str) {
 	$out = "";
@@ -1456,11 +1670,14 @@ function _decaret($str) {
 	return $out;
 }
 
+/**
+ * @return User
+ */
 function _get_user() {
-	global $config;
+	global $config, $page;
 	$user = null;
-	if(get_prefixed_cookie("user") && get_prefixed_cookie("session")) {
-	    $tmp_user = User::by_session(get_prefixed_cookie("user"), get_prefixed_cookie("session"));
+	if($page->get_cookie("user") && $page->get_cookie("session")) {
+	    $tmp_user = User::by_session($page->get_cookie("user"), $page->get_cookie("session"));
 		if(!is_null($tmp_user)) {
 			$user = $tmp_user;
 		}
@@ -1471,6 +1688,10 @@ function _get_user() {
 	assert(!is_null($user));
 
 	return $user;
+}
+
+function _get_query() {
+	return @$_POST["q"]?:@$_GET["q"];
 }
 
 

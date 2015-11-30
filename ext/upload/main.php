@@ -10,14 +10,23 @@
  * Occurs when some data is being uploaded.
  */
 class DataUploadEvent extends Event {
-	var $tmpname, $metadata, $hash, $type, $image_id = -1;
+	/** @var string */
+	public $tmpname;
+	/** @var array */
+	public $metadata;
+	/** @var string */
+	public $hash;
+	/** @var string */
+	public $type;
+	/** @var int */
+	public $image_id = -1;
 
 	/**
 	 * Some data is being uploaded.
 	 * This should be caught by a file handler.
 	 *  -- Removed: param $user The user uploading the data.
-	 * @param $tmpname string The temporary file used for upload.
-	 * @param $metadata array Info about the file, should contain at least "filename", "extension", "tags" and "source".
+	 * @param string $tmpname The temporary file used for upload.
+	 * @param array $metadata Info about the file, should contain at least "filename", "extension", "tags" and "source".
 	 */
 	public function __construct(/*string*/ $tmpname, /*array*/ $metadata) {
 		assert(file_exists($tmpname));
@@ -42,25 +51,32 @@ class UploadException extends SCoreException {}
  * This also includes transloaded files as well.
  */
 class Upload extends Extension {
-
+	/** @var bool */
 	public $is_full;
 
-	// early, so it can stop the DataUploadEvent before any data handlers see it
+	/**
+	 * Early, so it can stop the DataUploadEvent before any data handlers see it.
+	 *
+	 * @return int
+	 */
 	public function get_priority() {return 40;}
 
 	public function onInitExt(InitExtEvent $event) {
 		global $config;
 		$config->set_default_int('upload_count', 3);
 		$config->set_default_int('upload_size', '1MB');
+		$config->set_default_int('upload_min_free_space', '100MB');
 		$config->set_default_bool('upload_tlsource', TRUE);
 
-		// SHIT: fucking PHP "security" measures -_-;;;
-		$free_num = @disk_free_space(realpath("./images/"));
-		if($free_num === FALSE) {
-			$this->is_full = false;
-		}
-		else {
-			$this->is_full = $free_num < MIN_FREE_SPACE;
+		$this->is_full = false;
+
+		$min_free_space = $config->get_int("upload_min_free_space");
+		if($min_free_space > 0) {
+			// SHIT: fucking PHP "security" measures -_-;;;
+			$free_num = @disk_free_space(realpath("./images/"));
+			if($free_num !== FALSE) {
+				$this->is_full = $free_num < $min_free_space;
+			}
 		}
 	}
 
@@ -109,8 +125,8 @@ class Upload extends Extension {
 		}
 	}
 
-	public function onPageRequest($event) {
-		global $config, $page, $user;
+	public function onPageRequest(PageRequestEvent $event) {
+		global $page, $user;
 
 		if($event->page_matches("upload/replace")) {
 			// check if the user is an administrator and can upload files.
@@ -129,12 +145,12 @@ class Upload extends Extension {
 				if(empty($image_id)) {
 					throw new UploadException("Can not replace Image: No valid Image ID given.");
 				}
-					
+
 				$image_old = Image::by_id($image_id);
 				if(is_null($image_old)) {
 					$this->theme->display_error(404, "Image not found", "No image in the database has the ID #$image_id");
 				}
-					
+
 				if(count($_FILES) + count($_POST) > 0) {
 					if(count($_FILES) > 1) {
 						throw new UploadException("Can not upload more than one image for replacing.");
@@ -143,6 +159,7 @@ class Upload extends Extension {
 					$source = isset($_POST['source']) ? $_POST['source'] : null;
 					$tags = ''; // Tags aren't changed when uploading. Set to null to stop PHP warnings.
 					
+					$ok = false;
 					if(count($_FILES)) {
 						foreach($_FILES as $file) {
 							$ok = $this->try_upload($file, $tags, $source, $image_id);
@@ -161,9 +178,10 @@ class Upload extends Extension {
 				}
 				else if(!empty($_GET['url'])) {
 					$url = $_GET['url'];
+					$tags = isset($_GET['tags']) ? $_GET['tags'] : 'tagme';
 					$source = isset($_GET['source']) ? $_GET['source'] : $url;
 					$ok = $this->try_transload($url, $tags, $source, $image_id);
-					$this->theme->display_upload_status($page, $ok);		
+					$this->theme->display_upload_status($page, $ok);
 				}
 				else {
 					$this->theme->display_replace_page($page, $image_id);
@@ -215,6 +233,10 @@ class Upload extends Extension {
 		}
 	}
 
+	/**
+	 * @param int $id
+	 * @return string[]
+	 */
 	private function tags_for_upload_slot($id) {
 		if(isset($_POST["tags$id"])) {
 			# merge then explode, not explode then merge - else
@@ -237,8 +259,8 @@ class Upload extends Extension {
 	 *
 	 * TODO: Make these messages user/admin editable
 	 *
-	 * @param $error_code integer PHP error code
-	 * @return String
+	 * @param int $error_code PHP error code
+	 * @return string
 	 */
 	private function upload_error_message($error_code) {
 		switch ($error_code) {
@@ -270,7 +292,7 @@ class Upload extends Extension {
 	 * @return bool TRUE on upload successful.
 	 */
 	private function try_upload($file, $tags, $source, $replace='') {
-		global $page, $config, $user;
+		global $page;
 
 		if(empty($source)) $source = null;
 
@@ -301,7 +323,6 @@ class Upload extends Extension {
 				if($event->image_id == -1) {
 					throw new UploadException("File type not recognised");
 				}
-				//header("X-Shimmie-Image-ID: ".int_escape($event->image_id));
 				$page->add_http_header("X-Shimmie-Image-ID: ".int_escape($event->image_id));
 			}
 			catch(UploadException $ex) {
@@ -316,11 +337,12 @@ class Upload extends Extension {
 
 	/**
 	 * Handle an transload.
-	 * @param $url
-	 * @param $tags
-	 * @param $source
+	 *
+	 * @param string $url
+	 * @param mixed $tags
+	 * @param string $source
 	 * @param string $replace
-	 * @return bool TRUE on transload successful.
+	 * @return bool Returns TRUE on transload successful.
 	 */
 	private function try_transload($url, $tags, $source, $replace='') {
 		global $page, $config, $user;
@@ -333,7 +355,7 @@ class Upload extends Extension {
 		}
 		
 		// Checks if url contains rating, also checks if the rating extension is enabled.
-		if($config->get_string("transload_engine", "none") != "none" && class_exists("Ratings") && !empty($_GET['rating'])) {
+		if($config->get_string("transload_engine", "none") != "none" && ext_is_live("Ratings") && !empty($_GET['rating'])) {
 			// Rating event will validate that this is s/q/e/u
 			$rating = strtolower($_GET['rating']);
 			$rating = $rating[0];
@@ -343,8 +365,11 @@ class Upload extends Extension {
 
 		$tmp_filename = tempnam(ini_get('upload_tmp_dir'), "shimmie_transload");
 
+		// transload() returns Array or Bool, depending on the transload_engine.
 		$headers = transload($url, $tmp_filename);
-		$h_filename = (isset($headers['Content-Disposition']) ? preg_replace('/^.*filename="([^ ]+)"/i', '$1', $headers['Content-Disposition']) : null);
+		
+		$s_filename = is_array($headers) ? findHeader($headers, 'Content-Disposition') : null;
+		$h_filename = ($s_filename ? preg_replace('/^.*filename="([^ ]+)"/i', '$1', $s_filename) : null);
 		$filename = $h_filename ?: basename($url);
 
 		if(!$headers) {
@@ -358,19 +383,23 @@ class Upload extends Extension {
 				"No data found -- perhaps the site has hotlink protection?");
 			$ok = false;
 		}else{
-			global $user;
 			$pathinfo = pathinfo($url);
 			$metadata = array();
 			$metadata['filename'] = $filename;
-			$metadata['extension'] = getExtension($headers['Content-Type']) ?: $pathinfo['extension'];
 			$metadata['tags'] = $tags;
 			$metadata['source'] = (($url == $source) && !$config->get_bool('upload_tlsource') ? "" : $source);
+			
+			if (is_array($headers)) {
+				$metadata['extension'] = getExtension(findHeader($headers, 'Content-Type'));
+			} else {
+				$metadata['extension'] = $pathinfo['extension'];
+			}
 			
 			/* check for locked > adds to metadata if it has */
 			if(!empty($locked)){
 				$metadata['locked'] = $locked ? "on" : "";
 			}
-						
+
 			/* check for rating > adds to metadata if it has */
 			if(!empty($rating)){
 				$metadata['rating'] = $rating;

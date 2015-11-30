@@ -1,11 +1,14 @@
 <?php
 
 class AliasEditorTheme extends Themelet {
-	/*
-	 * Show a page of aliases:
+	/**
+	 * Show a page of aliases.
 	 *
-	 * $aliases = an array of ($old_tag => $new_tag)
-	 * $can_manage = whether things like "add new alias" should be shown
+	 * Note: $can_manage = whether things like "add new alias" should be shown
+	 *
+	 * @param array $aliases An array of ($old_tag => $new_tag)
+	 * @param int $pageNumber
+	 * @param int $totalPages
 	 */
 	public function display_aliases($aliases, $pageNumber, $totalPages) {
 		global $page, $user;
@@ -16,8 +19,8 @@ class AliasEditorTheme extends Themelet {
 			$h_add = "
 				<tr>
 					".make_form(make_link("alias/add"))."
-						<td><input type='text' name='oldtag'></td>
-						<td><input type='text' name='newtag'></td>
+						<td><input type='text' name='oldtag' class='autocomplete_tags' autocomplete='off'></td>
+						<td><input type='text' name='newtag' class='autocomplete_tags' autocomplete='off'></td>
 						<td><input type='submit' value='Add'></td>
 					</form>
 				</tr>
@@ -52,7 +55,7 @@ class AliasEditorTheme extends Themelet {
 				<tbody>$h_aliases</tbody>
 				<tfoot>$h_add</tfoot>
 			</table>
-			<p><a href='".make_link("alias/export/aliases.csv")."'>Download as CSV</a></p>
+			<p><a href='".make_link("alias/export/aliases.csv")."' download='aliases.csv'>Download as CSV</a></p>
 		";
 
 		$bulk_html = "

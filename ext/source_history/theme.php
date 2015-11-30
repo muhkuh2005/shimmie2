@@ -2,6 +2,11 @@
 class Source_HistoryTheme extends Themelet {
 	var $messages = array();
 
+	/**
+	 * @param Page $page
+	 * @param int $image_id
+	 * @param array $history
+	 */
 	public function display_history_page(Page $page, /*int*/ $image_id, /*array*/ $history) {
 		global $user;
 		$start_string = "
@@ -18,6 +23,7 @@ class Source_HistoryTheme extends Themelet {
 			$current_id = $fields['id'];
 			$current_source = html_escape($fields['source']);
 			$name = $fields['name'];
+			$date_set = autodate($fields['date_set']);
 			$h_ip = $user->can("view_ip") ? " ".show_ip($fields['user_ip'], "Sourcing Image #$image_id as '$current_source'") : "";
 			$setter = "<a href='".make_link("user/".url_escape($name))."'>".html_escape($name)."</a>$h_ip";
 
@@ -26,7 +32,11 @@ class Source_HistoryTheme extends Themelet {
 			$history_list .= "
 				<li>
 					<input type='radio' name='revert' id='$current_id' value='$current_id'$selected>
-					<label for='$current_id'>$current_source (Set by $setter)</label>
+					<label for='$current_id'>
+						$current_source
+						<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+						Set by $setter $date_set
+					</label>
 				</li>
 				";
 		}
@@ -45,6 +55,11 @@ class Source_HistoryTheme extends Themelet {
 		$page->add_block(new Block("Source History", $history_html, "main", 10));
 	}
 
+	/**
+	 * @param Page $page
+	 * @param array $history
+	 * @param int $page_number
+	 */
 	public function display_global_page(Page $page, /*array*/ $history, /*int*/ $page_number) {
 		$start_string = "
 			<div style='text-align: left'>
@@ -93,8 +108,9 @@ class Source_HistoryTheme extends Themelet {
 		$page->add_block(new Block("Navigation", $nav, "left"));
 	}
 
-	/*
+	/**
 	 * Add a section to the admin page.
+	 * @param string $validation_msg
 	 */
 	public function display_admin_block(/*string*/ $validation_msg='') {
 		global $page;
@@ -113,7 +129,7 @@ class Source_HistoryTheme extends Themelet {
 				<table class='form'>
 					<tr><th>Username</th>        <td><input type='text' name='revert_name' size='15'></td></tr>
 					<tr><th>IP&nbsp;Address</th> <td><input type='text' name='revert_ip' size='15'></td></tr>
-					<tr><th>Date&nbsp;range</th> <td><input type='text' name='revert_date' size='15'></td></tr>
+					<tr><th>Date&nbsp;range</th> <td><input type='date' name='revert_date' size='15'></td></tr>
 					<tr><td colspan='2'><input type='submit' value='Revert'></td></tr>
 				</table>
 			</form>
@@ -129,7 +145,11 @@ class Source_HistoryTheme extends Themelet {
 		$html = implode($this->messages, "\n");
 		$page->add_block(new Block("Bulk Revert Results", $html));
 	}
-	
+
+	/**
+	 * @param string $title
+	 * @param string $body
+	 */
 	public function add_status(/*string*/ $title, /*string*/ $body) {
 		$this->messages[] = '<p><b>'. $title .'</b><br>'. $body .'</p>';
 	}

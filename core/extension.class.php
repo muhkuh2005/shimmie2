@@ -47,7 +47,7 @@
  * }
  *
  * // ext/hello/test.php
- * public class HelloTest extends SCoreWebTestCase {
+ * public class HelloTest extends SCorePHPUnitTestCase {
  *     public function testHello() {
  *         $this->get_page("post/list");                   // View a page, any page
  *         $this->assert_text("Hello there");              // Check that the specified text is in that page
@@ -70,6 +70,8 @@
  */
 
 /**
+ * Class Extension
+ *
  * send_event(BlahEvent()) -> onBlah($event)
  *
  * Also loads the theme object into $this->theme if available
@@ -80,6 +82,9 @@
  * find the thread where the original was posted >_<
  */
 abstract class Extension {
+	/** @var array which DBs this ext supports (blank for 'all') */
+	protected $db_support = [];
+
 	/** this theme's Themelet object */
 	public $theme;
 
@@ -95,8 +100,21 @@ abstract class Extension {
 		if(is_null($this->theme)) $this->theme = $this->get_theme_object($child, false);
 	}
 
+
+	public function is_live() {
+		global $database;
+		return (
+			empty($this->db_support) ||
+			in_array($database->get_driver_name(), $this->db_support)
+		);
+	}
+
 	/**
-	 * Find the theme object for a given extension
+	 * Find the theme object for a given extension.
+	 *
+	 * @param Extension $class
+	 * @param bool $fatal
+	 * @return bool
 	 */
 	private function get_theme_object(Extension $class, $fatal=true) {
 		$base = get_class($class);
@@ -114,7 +132,9 @@ abstract class Extension {
 
 	/**
 	 * Override this to change the priority of the extension,
-	 * lower numbered ones will recieve events first
+	 * lower numbered ones will recieve events first.
+	 *
+	 * @return int
 	 */
 	public function get_priority() {
 		return 50;
@@ -122,23 +142,43 @@ abstract class Extension {
 }
 
 /**
- * Several extensions have this in common, make a common API
+ * Class FormatterExtension
+ *
+ * Several extensions have this in common, make a common API.
  */
 abstract class FormatterExtension extends Extension {
+	/**
+	 * @param TextFormattingEvent $event
+	 */
 	public function onTextFormatting(TextFormattingEvent $event) {
 		$event->formatted = $this->format($event->formatted);
 		$event->stripped  = $this->strip($event->stripped);
 	}
 
+	/**
+	 * @param string $text
+	 * @return string
+	 */
 	abstract public function format(/*string*/ $text);
+
+	/**
+	 * @param string $text
+	 * @return string
+	 */
 	abstract public function strip(/*string*/ $text);
 }
 
 /**
+ * Class DataHandlerExtension
+ *
  * This too is a common class of extension with many methods in common,
- * so we have a base class to extend from
+ * so we have a base class to extend from.
  */
 abstract class DataHandlerExtension extends Extension {
+	/**
+	 * @param DataUploadEvent $event
+	 * @throws UploadException
+	 */
 	public function onDataUpload(DataUploadEvent $event) {
 		$supported_ext = $this->supported_ext($event->type);
 		$check_contents = $this->check_contents($event->tmpname);
@@ -202,6 +242,9 @@ abstract class DataHandlerExtension extends Extension {
 		}
 	}
 
+	/**
+	 * @param ThumbnailGenerationEvent $event
+	 */
 	public function onThumbnailGeneration(ThumbnailGenerationEvent $event) {
 		if($this->supported_ext($event->type)) {
 			if (method_exists($this, 'create_thumb_force') && $event->force == true) {
@@ -213,6 +256,9 @@ abstract class DataHandlerExtension extends Extension {
 		}
 	}
 
+	/**
+	 * @param DisplayingImageEvent $event
+	 */
 	public function onDisplayingImage(DisplayingImageEvent $event) {
 		global $page;
 		if($this->supported_ext($event->image->ext)) {
@@ -229,9 +275,29 @@ abstract class DataHandlerExtension extends Extension {
 	protected function setup() {}
 	*/
 
+	/**
+	 * @param string $ext
+	 * @return bool
+	 */
 	abstract protected function supported_ext($ext);
+
+	/**
+	 * @param string $tmpname
+	 * @return bool
+	 */
 	abstract protected function check_contents($tmpname);
+
+	/**
+	 * @param string $filename
+	 * @param array $metadata
+	 * @return Image|null
+	 */
 	abstract protected function create_image_from_data($filename, $metadata);
+
+	/**
+	 * @param string $hash
+	 * @return bool
+	 */
 	abstract protected function create_thumb($hash);
 }
 

@@ -159,23 +159,39 @@
  * Signal that a search term needs parsing
  */
 class SearchTermParseEvent extends Event {
-	var $term = null;
-	var $context = null;
-	var $querylets = array();
+	/** @var null|string  */
+	public $term = null;
+	/** @var null|array */
+	public $context = null;
+	/** @var \Querylet[] */
+	public $querylets = array();
 
+	/**
+	 * @param string|null $term
+	 * @param array|null $context
+	 */
 	public function __construct($term, $context) {
 		$this->term = $term;
 		$this->context = $context;
 	}
 
+	/**
+	 * @return bool
+	 */
 	public function is_querylet_set() {
 		return (count($this->querylets) > 0);
 	}
 
+	/**
+	 * @return \Querylet[]
+	 */
 	public function get_querylets() {
 		return $this->querylets;
 	}
 
+	/**
+	 * @param \Querylet $q
+	 */
 	public function add_querylet($q) {
 		$this->querylets[] = $q;
 	}
@@ -185,13 +201,23 @@ class SearchTermParseException extends SCoreException {
 }
 
 class PostListBuildingEvent extends Event {
-	var $search_terms = null;
-	var $parts = array();
+	/** @var null|array */
+	public $search_terms = null;
 
+	/** @var array */
+	public $parts = array();
+
+	/**
+	 * @param array|null $search
+	 */
 	public function __construct($search) {
 		$this->search_terms = $search;
 	}
 
+	/**
+	 * @param string $html
+	 * @param int $position
+	 */
 	public function add_control(/*string*/ $html, /*int*/ $position=50) {
 		while(isset($this->parts[$position])) $position++;
 		$this->parts[$position] = $html;
@@ -209,7 +235,7 @@ class Index extends Extension {
 	}
 
 	public function onPageRequest(PageRequestEvent $event) {
-		global $config, $database, $page, $user;
+		global $database, $page;
 		if($event->page_matches("post/list")) {
 			if(isset($_GET['search'])) {
 				$search = url_escape(Tag::implode(Tag::resolve_aliases(Tag::explode($_GET['search'], false))));
@@ -234,10 +260,10 @@ class Index extends Extension {
 				#log_debug("index", "Search for ".implode(" ", $search_terms), false, array("terms"=>$search_terms));
 				$total_pages = Image::count_pages($search_terms);
 				if(SPEED_HAX && $count_search_terms === 0 && ($page_number < 10)) { // extra caching for the first few post/list pages
-					$images = $database->cache->get("post-list-$page_number");
+					$images = $database->cache->get("post-list:$page_number");
 					if(!$images) {
 						$images = Image::find_images(($page_number-1)*$page_size, $page_size, $search_terms);
-						$database->cache->set("post-list-$page_number", $images, 600);
+						$database->cache->set("post-list:$page_number", $images, 600);
 					}
 				}
 				else {
@@ -284,21 +310,10 @@ class Index extends Extension {
 		$event->panel->add_block($sb);
 	}
 
-	public function onImageAddition(ImageAdditionEvent $event) {
+	public function onImageInfoSet($event) {
 		global $database;
 		if(SPEED_HAX) {
-			for($i=1; $i<10; $i++) {
-				$database->cache->delete("post-list-$i");
-			}
-		}
-	}
-
-	public function onImageDeletion(ImageDeletionEvent $event) {
-		global $database;
-		if(SPEED_HAX) {
-			for($i=1; $i<10; $i++) {
-				$database->cache->delete("post-list-$i");
-			}
+			$database->cache->delete("thumb-block:{$event->image->id}");
 		}
 	}
 
@@ -362,19 +377,17 @@ class Index extends Extension {
 			$event->add_querylet(new Querylet("height $cmp :height{$this->stpen}",array("height{$this->stpen}"=>int_escape($matches[2]))));
 		}
 		else if(preg_match("/^order[=|:](id|width|height|filesize|filename)[_]?(desc|asc)?$/i", $event->term, $matches)){
-			global $order_sql;
 			$ord = strtolower($matches[1]);
 			$default_order_for_column = preg_match("/^(id|filename)$/", $matches[1]) ? "ASC" : "DESC";
 			$sort = isset($matches[2]) ? strtoupper($matches[2]) : $default_order_for_column;
-			$order_sql = "images.$ord $sort";
+			Image::$order_sql = "images.$ord $sort";
 			$event->add_querylet(new Querylet("1=1")); //small hack to avoid metatag being treated as normal tag
 		}
 		else if(preg_match("/^order[=|:]random[_]([0-9]{1,4})$/i", $event->term, $matches)){
-			global $order_sql;
 			//order[=|:]random requires a seed to avoid duplicates
 			//since the tag can't be changed during the parseevent, we instead generate the seed during submit using js
 			$seed = $matches[1];
-			$order_sql = "RAND($seed)";
+			Image::$order_sql = "RAND($seed)";
 			$event->add_querylet(new Querylet("1=1")); //small hack to avoid metatag being treated as normal tag
 		}
 

@@ -20,17 +20,29 @@
  */
 
 class RatingSetEvent extends Event {
-	var $image, $rating;
+	/** @var \Image */
+	public $image;
+	/** @var string  */
+	public $rating;
 
+	/**
+	 * @param Image $image
+	 * @param string $rating
+	 */
 	public function __construct(Image $image, /*char*/ $rating) {
 		assert(in_array($rating, array("s", "q", "e", "u")));
+
 		$this->image = $image;
 		$this->rating = $rating;
 	}
 }
 
 class Ratings extends Extension {
+	protected $db_support = ['mysql'];  // ?
 
+	/**
+	 * @return int
+	 */
 	public function get_priority() {return 50;}
 
 	public function onInitExt(InitExtEvent $event) {
@@ -69,7 +81,7 @@ class Ratings extends Extension {
 
 	
 	public function onDisplayingImage(DisplayingImageEvent $event) {
-		global $user, $database, $page;
+		global $user, $page;
 		/**
 		 * Deny images upon insufficient permissions.
 		 **/
@@ -97,15 +109,13 @@ class Ratings extends Extension {
 	}
 	
 	public function onImageInfoSet(ImageInfoSetEvent $event) {
-		global $user;
-		
 		if($this->can_rate() && isset($_POST["rating"])) {
 			send_event(new RatingSetEvent($event->image, $_POST['rating']));
 		}
 	}
 
 	public function onParseLinkTemplate(ParseLinkTemplateEvent $event) {
-		$event->replace('$rating', $this->theme->rating_to_name($event->image->rating));
+		$event->replace('$rating', $this->rating_to_human($event->image->rating));
 	}
 
 	public function onSearchTermParse(SearchTermParseEvent $event) {
@@ -117,7 +127,7 @@ class Ratings extends Extension {
 			$event->add_querylet(new Querylet("rating IN ($set)"));
 		}
 		if(preg_match("/^rating[=|:](?:([sqeu]+)|(safe|questionable|explicit|unknown))$/D", strtolower($event->term), $matches)) {
-			$ratings = $matches[1] ? $matches[1] : array($matches[2][0]);
+			$ratings = $matches[1] ? $matches[1] : $matches[2][0];
 			$ratings = array_intersect(str_split($ratings), str_split(Ratings::get_user_privs($user)));
 			$set = "'" . join("', '", $ratings) . "'";
 			$event->add_querylet(new Querylet("rating IN ($set)"));
@@ -125,11 +135,11 @@ class Ratings extends Extension {
 	}
 
 	public function onPageRequest(PageRequestEvent $event) {
-		global $database, $user, $page;
+		global $user, $page;
 		
 		if ($event->page_matches("admin/bulk_rate")) {
 			if(!$user->is_admin()) {
-				throw PermissionDeniedException();
+				throw new PermissionDeniedException();
 			}
 			else {
 				$n = 0;
@@ -154,9 +164,14 @@ class Ratings extends Extension {
 			}
 		}
 	}
-	
-	public static function get_user_privs($user) {
+
+	/**
+	 * @param \User $user
+	 * @return string
+	 */
+	public static function get_user_privs(User $user) {
 		global $config;
+
 		if($user->is_anonymous()) {
 			$sqes = $config->get_string("ext_rating_anon_privs");
 		}
@@ -169,6 +184,10 @@ class Ratings extends Extension {
 		return $sqes;
 	}
 
+	/**
+	 * @param string $sqes
+	 * @return string
+	 */
 	public static function privs_to_sql(/*string*/ $sqes) {
 		$arr = array();
 		$length = strlen($sqes);
@@ -179,6 +198,10 @@ class Ratings extends Extension {
 		return $set;
 	}
 
+	/**
+	 * @param string $rating
+	 * @return string
+	 */
 	public static function rating_to_human(/*string*/ $rating) {
 		switch($rating) {
 			case "s": return "Safe";
@@ -188,7 +211,11 @@ class Ratings extends Extension {
 		}
 	}
 
-	// FIXME: this is a bit ugly and guessey, should have proper options
+	/**
+	 * FIXME: this is a bit ugly and guessey, should have proper options
+	 *
+	 * @return bool
+	 */
 	private function can_rate() {
 		global $config, $user;
 		if($user->is_anonymous() && $config->get_string("ext_rating_anon_privs") == "sqeu") return false;
@@ -197,6 +224,10 @@ class Ratings extends Extension {
 		return false;
 	}
 
+	/**
+	 * @param $context
+	 * @return bool
+	 */
 	private function no_rating_query($context) {
 		foreach($context as $term) {
 			if(preg_match("/^rating[=|:]/", $term)) {
@@ -207,8 +238,7 @@ class Ratings extends Extension {
 	}
 
 	private function install() {
-		global $database;
-		global $config;
+		global $database, $config;
 
 		if($config->get_int("ext_ratings2_version") < 1) {
 			$database->Execute("ALTER TABLE images ADD COLUMN rating CHAR(1) NOT NULL DEFAULT 'u'");
@@ -227,11 +257,16 @@ class Ratings extends Extension {
 		}
 	}
 
+	/**
+	 * @param int $image_id
+	 * @param string $rating
+	 * @param string $old_rating
+	 */
 	private function set_rating(/*int*/ $image_id, /*string*/ $rating, /*string*/ $old_rating) {
 		global $database;
 		if($old_rating != $rating){
 			$database->Execute("UPDATE images SET rating=? WHERE id=?", array($rating, $image_id));
-			log_info("rating", "Rating for Image #{$image_id} set to: ".$this->theme->rating_to_name($rating));
+			log_info("rating", "Rating for Image #{$image_id} set to: ".$this->rating_to_human($rating));
 		}
 	}
 }

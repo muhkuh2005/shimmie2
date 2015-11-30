@@ -14,10 +14,20 @@
  */
 
 class FavoriteSetEvent extends Event {
-	var $image_id, $user, $do_set;
+	/** @var int */
+	public $image_id;
+	/** @var \User */
+	public $user;
+	/** @var bool */
+	public $do_set;
 
+	/**
+	 * @param int $image_id
+	 * @param User $user
+	 * @param bool $do_set
+	 */
 	public function __construct(/*int*/ $image_id, User $user, /*boolean*/ $do_set) {
-		assert(is_numeric($image_id));
+		assert(is_int($image_id));
 		assert(is_bool($do_set));
 
 		$this->image_id = $image_id;
@@ -123,7 +133,6 @@ class Favorites extends Extension {
 			$event->add_querylet(new Querylet("images.id IN (SELECT id FROM images WHERE favorites $cmp $favorites)"));
 		}
 		else if(preg_match("/^favorited_by[=|:](.*)$/i", $event->term, $matches)) {
-			global $database;
 			$user = User::by_name($matches[1]);
 			if(!is_null($user)) {
 				$user_id = $user->id;
@@ -157,7 +166,7 @@ class Favorites extends Extension {
 					FOREIGN KEY (image_id) REFERENCES images(id) ON DELETE CASCADE
 					");
 			$database->execute("CREATE INDEX user_favorites_image_id_idx ON user_favorites(image_id)", array());
-			$config->set_int("ext_favorites_version", 1);
+			$config->set_int("ext_favorites_version", 2);
 		}
 
 		if($config->get_int("ext_favorites_version") < 2) {
@@ -172,6 +181,11 @@ class Favorites extends Extension {
 		}
 	}
 
+	/**
+	 * @param int $image_id
+	 * @param int $user_id
+	 * @param bool $do_set
+	 */
 	private function add_vote(/*int*/ $image_id, /*int*/ $user_id, /*bool*/ $do_set) {
 		global $database;
 		if ($do_set) {
@@ -187,7 +201,11 @@ class Favorites extends Extension {
 			"UPDATE images SET favorites=(SELECT COUNT(*) FROM user_favorites WHERE image_id=:image_id) WHERE id=:user_id",
 			array("image_id"=>$image_id, "user_id"=>$user_id));
 	}
-	
+
+	/**
+	 * @param Image $image
+	 * @return string[]
+	 */
 	private function list_persons_who_have_favorited(Image $image) {
 		global $database;
 

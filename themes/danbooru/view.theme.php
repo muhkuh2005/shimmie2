@@ -32,20 +32,18 @@ class CustomViewImageTheme extends ViewImageTheme {
 
 		if(!is_null($image->source)) {
 			$h_source = html_escape($image->source);
-			if(substr($image->source, 0, 7) != "http://") {
+			if(substr($image->source, 0, 7) != "http://" && substr($image->source, 0, 8) != "https://") {
 				$h_source = "http://" . $h_source;
 			}
 			$html .= "<br>Source: <a href='$h_source'>link</a>";
 		}
 
-		if(class_exists("Ratings")) {
+		if(ext_is_live("Ratings")) {
 			if($image->rating == null || $image->rating == "u"){
 				$image->rating = "u";
 			}
-			if(class_exists("Ratings")) {
-				$h_rating = Ratings::rating_to_human($image->rating);
-				$html .= "<br>Rating: $h_rating";
-			}
+			$h_rating = Ratings::rating_to_human($image->rating);
+			$html .= "<br>Rating: $h_rating";
 		}
 
 		return $html;

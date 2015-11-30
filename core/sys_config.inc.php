@@ -18,6 +18,8 @@
  *  define("SPEED_HAX", true);
  *
  */
+
+/** @private */
 function _d($name, $value) {if(!defined($name)) define($name, $value);}
 _d("DATABASE_DSN", null);    // string   PDO database connection details
 _d("DATABASE_KA", true);     // string   Keep database connection alive
@@ -32,10 +34,10 @@ _d("COOKIE_PREFIX", 'shm');  // string   if you run multiple galleries with non-
 _d("SPEED_HAX", false);      // boolean  do some questionable things in the name of performance
 _d("COMPILE_ELS", false);    // boolean  pre-build the list of event listeners
 _d("NICE_URLS", false);      // boolean  force niceurl mode
+_d("SEARCH_ACCEL", false);   // boolean  use search accelerator
 _d("WH_SPLITS", 1);          // int      how many levels of subfolders to put in the warehouse
-_d("VERSION", '2.5.1-e9d8ae7'); // string   shimmie version
+_d("VERSION", '2.5.5');      // string   shimmie version
 _d("TIMEZONE", null);        // string   timezone
-_d("MIN_FREE_SPACE",100*1024*1024); // int      disable uploading if there's less than MIN_FREE_SPACE bytes free space
 _d("CORE_EXTS", "bbcode,user,mail,upload,image,view,handle_pixel,ext_manager,setup,upgrade,handle_404,comment,tag_list,index,tag_edit,alias_editor"); // extensions to always enable
 _d("EXTRA_EXTS", "");        // optional extra extensions
 

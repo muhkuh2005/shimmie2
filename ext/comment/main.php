@@ -12,9 +12,20 @@
 require_once "lib/akismet.class.php";
 
 class CommentPostingEvent extends Event {
-	var $image_id, $user, $comment;
+	/** @var  int */
+	public $image_id;
+	/** @var \User */
+	public $user;
+	/** @var string  */
+	public $comment;
 
+	/**
+	 * @param int $image_id
+	 * @param \User $user
+	 * @param string $comment
+	 */
 	public function __construct($image_id, $user, $comment) {
+		assert('is_numeric($image_id)');
 		$this->image_id = $image_id;
 		$this->user = $user;
 		$this->comment = $comment;
@@ -27,9 +38,14 @@ class CommentPostingEvent extends Event {
  * and what should be kept?
  */
 class CommentDeletionEvent extends Event {
-	var $comment_id;
+	/** @var  int */
+	public $comment_id;
 
+	/**
+	 * @param int $comment_id
+	 */
 	public function __construct($comment_id) {
+		assert('is_numeric($comment_id)');
 		$this->comment_id = $comment_id;
 	}
 }
@@ -54,11 +70,22 @@ class Comment {
 		$this->posted =  $row['posted'];
 	}
 
+	/**
+	 * @param User $user
+	 * @return mixed
+	 */
 	public static function count_comments_by_user($user) {
 		global $database;
-		return $database->get_one("SELECT COUNT(*) AS count FROM comments WHERE owner_id=:owner_id", array("owner_id"=>$user->id));
+		return $database->get_one("
+			SELECT COUNT(*) AS count
+			FROM comments
+			WHERE owner_id=:owner_id
+		", array("owner_id"=>$user->id));
 	}
 
+	/**
+	 * @return null|User
+	 */
 	public function get_owner() {
 		if(empty($this->owner)) $this->owner = User::by_id($this->owner_id);
 		return $this->owner;
@@ -66,6 +93,9 @@ class Comment {
 }
 
 class CommentList extends Extension {
+	/** @var CommentListTheme $theme */
+	var $theme;
+
 	public function onInitExt(InitExtEvent $event) {
 		global $config, $database;
 		$config->set_default_int('comment_window', 5);
@@ -124,76 +154,90 @@ class CommentList extends Extension {
 	}
 
 	public function onPageRequest(PageRequestEvent $event) {
-		global $page, $user, $database;
 		if($event->page_matches("comment")) {
-			if($event->get_arg(0) === "add") {
-				if(isset($_POST['image_id']) && isset($_POST['comment'])) {
-					try {
-						$i_iid = int_escape($_POST['image_id']);
-						$cpe = new CommentPostingEvent($_POST['image_id'], $user, $_POST['comment']);
-						send_event($cpe);
-						$page->set_mode("redirect");
-						$page->set_redirect(make_link("post/view/$i_iid#comment_on_$i_iid"));
-					}
-					catch(CommentPostingException $ex) {
-						$this->theme->display_error(403, "Comment Blocked", $ex->getMessage());
-					}
-				}
-			}
-			else if($event->get_arg(0) === "delete") {
-				if($user->can("delete_comment")) {
-					// FIXME: post, not args
-					if($event->count_args() === 3) {
-						send_event(new CommentDeletionEvent($event->get_arg(1)));
-						flash_message("Deleted comment");
-						$page->set_mode("redirect");
-						if(!empty($_SERVER['HTTP_REFERER'])) {
-							$page->set_redirect($_SERVER['HTTP_REFERER']);
-						}
-						else {
-							$page->set_redirect(make_link("post/view/".$event->get_arg(2)));
-						}
-					}
-				}
-				else {
-					$this->theme->display_permission_denied();
-				}
-			}
-			else if($event->get_arg(0) === "bulk_delete") {
-				if($user->can("delete_comment") && !empty($_POST["ip"])) {
-					$ip = $_POST['ip'];
-
-					$cids = $database->get_col("SELECT id FROM comments WHERE owner_ip=:ip", array("ip"=>$ip));
-					$num = count($cids);
-					log_warning("comment", "Deleting $num comments from $ip");
-					foreach($cids as $cid) {
-						send_event(new CommentDeletionEvent($cid));
-					}
-					flash_message("Deleted $num comments");
-
-					$page->set_mode("redirect");
-					$page->set_redirect(make_link("admin"));
-				}
-				else {
-					$this->theme->display_permission_denied();
-				}
-			}
-			else if($event->get_arg(0) === "list") {
-				$page_num = int_escape($event->get_arg(1));
-				$this->build_page($page_num);
-			}
-			else if($event->get_arg(0) === "beta-search") {
-				$search = $event->get_arg(1);
-				$page_num = int_escape($event->get_arg(2));
-				$duser = User::by_name($search);
-				$i_comment_count = Comment::count_comments_by_user($duser);
-				$com_per_page = 50;
-				$total_pages = ceil($i_comment_count/$com_per_page);
-				$page_num = $this->sanity_check_pagenumber($page_num, $total_pages);
-				$comments = $this->get_user_comments($duser->id, $com_per_page, ($page_num-1) * $com_per_page);
-				$this->theme->display_all_user_comments($comments, $page_num, $total_pages, $duser);
+			switch($event->get_arg(0)) {
+				case "add": $this->onPageRequest_add(); break;
+				case "delete": $this->onPageRequest_delete($event); break;
+				case "bulk_delete": $this->onPageRequest_bulk_delete(); break;
+				case "list": $this->onPageRequest_list($event); break;
+				case "beta-search": $this->onPageRequest_beta_search($event); break;
 			}
 		}
+	}
+
+	private function onPageRequest_add() {
+		global $user, $page;
+		if (isset($_POST['image_id']) && isset($_POST['comment'])) {
+			try {
+				$i_iid = int_escape($_POST['image_id']);
+				$cpe = new CommentPostingEvent($_POST['image_id'], $user, $_POST['comment']);
+				send_event($cpe);
+				$page->set_mode("redirect");
+				$page->set_redirect(make_link("post/view/$i_iid#comment_on_$i_iid"));
+			} catch (CommentPostingException $ex) {
+				$this->theme->display_error(403, "Comment Blocked", $ex->getMessage());
+			}
+		}
+	}
+
+	private function onPageRequest_delete(PageRequestEvent $event) {
+		global $user, $page;
+		if ($user->can("delete_comment")) {
+			// FIXME: post, not args
+			if ($event->count_args() === 3) {
+				send_event(new CommentDeletionEvent($event->get_arg(1)));
+				flash_message("Deleted comment");
+				$page->set_mode("redirect");
+				if (!empty($_SERVER['HTTP_REFERER'])) {
+					$page->set_redirect($_SERVER['HTTP_REFERER']);
+				} else {
+					$page->set_redirect(make_link("post/view/" . $event->get_arg(2)));
+				}
+			}
+		} else {
+			$this->theme->display_permission_denied();
+		}
+	}
+
+	private function onPageRequest_bulk_delete() {
+		global $user, $database, $page;
+		if ($user->can("delete_comment") && !empty($_POST["ip"])) {
+			$ip = $_POST['ip'];
+
+			$comment_ids = $database->get_col("
+				SELECT id
+				FROM comments
+				WHERE owner_ip=:ip
+			", array("ip" => $ip));
+			$num = count($comment_ids);
+			log_warning("comment", "Deleting $num comments from $ip");
+			foreach($comment_ids as $cid) {
+				send_event(new CommentDeletionEvent($cid));
+			}
+			flash_message("Deleted $num comments");
+
+			$page->set_mode("redirect");
+			$page->set_redirect(make_link("admin"));
+		} else {
+			$this->theme->display_permission_denied();
+		}
+	}
+
+	private function onPageRequest_list(PageRequestEvent $event) {
+		$page_num = int_escape($event->get_arg(1));
+		$this->build_page($page_num);
+	}
+
+	private function onPageRequest_beta_search(PageRequestEvent $event) {
+		$search = $event->get_arg(1);
+		$page_num = int_escape($event->get_arg(2));
+		$duser = User::by_name($search);
+		$i_comment_count = Comment::count_comments_by_user($duser);
+		$com_per_page = 50;
+		$total_pages = ceil($i_comment_count / $com_per_page);
+		$page_num = clamp($page_num, 1, $total_pages);
+		$comments = $this->get_user_comments($duser->id, $com_per_page, ($page_num - 1) * $com_per_page);
+		$this->theme->display_all_user_comments($comments, $page_num, $total_pages, $duser);
 	}
 
 	public function onAdminBuilding(AdminBuildingEvent $event) {
@@ -241,7 +285,10 @@ class CommentList extends Extension {
 
 	public function onCommentDeletion(CommentDeletionEvent $event) {
 		global $database;
-		$database->Execute("DELETE FROM comments WHERE id=:comment_id", array("comment_id"=>$event->comment_id));
+		$database->Execute("
+			DELETE FROM comments
+			WHERE id=:comment_id
+		", array("comment_id"=>$event->comment_id));
 		log_info("comment", "Deleting Comment #{$event->comment_id}");
 	}
 
@@ -266,18 +313,17 @@ class CommentList extends Extension {
 
 	public function onSearchTermParse(SearchTermParseEvent $event) {
 		$matches = array();
+
 		if(preg_match("/^comments([:]?<|[:]?>|[:]?<=|[:]?>=|[:|=])(\d+)$/i", $event->term, $matches)) {
 			$cmp = ltrim($matches[1], ":") ?: "=";
 			$comments = $matches[2];
 			$event->add_querylet(new Querylet("images.id IN (SELECT DISTINCT image_id FROM comments GROUP BY image_id HAVING count(image_id) $cmp $comments)"));
 		}
 		else if(preg_match("/^commented_by[=|:](.*)$/i", $event->term, $matches)) {
-			global $database;
 			$user = User::by_name($matches[1]);
 			if(!is_null($user)) {
 				$user_id = $user->id;
-			}
-			else {
+			} else {
 				$user_id = -1;
 			}
 
@@ -290,49 +336,52 @@ class CommentList extends Extension {
 	}
 
 // page building {{{
+	/**
+	 * @param int $current_page
+	 */
 	private function build_page(/*int*/ $current_page) {
-		global $page, $config, $database, $user;
+		global $database, $user;
 
-		if(class_exists("Ratings")) {
-			$user_ratings = Ratings::get_user_privs($user);
-		}
-		
 		$where = SPEED_HAX ? "WHERE posted > now() - interval '24 hours'" : "";
 		
 		$total_pages = $database->cache->get("comment_pages");
 		if(empty($total_pages)) {
-			$total_pages = (int)($database->get_one("SELECT COUNT(c1) FROM (SELECT COUNT(image_id) AS c1 FROM comments $where GROUP BY image_id) AS s1") / 10);
+			$total_pages = (int)($database->get_one("
+				SELECT COUNT(c1)
+				FROM (SELECT COUNT(image_id) AS c1 FROM comments $where GROUP BY image_id) AS s1
+			") / 10);
 			$database->cache->set("comment_pages", $total_pages, 600);
 		}
-		
-		if(is_null($current_page) || $current_page <= 0) {
-			$current_page = 1;
-		}
-		$current_page = $this->sanity_check_pagenumber($current_page, $total_pages);
+		$total_pages = max($total_pages, 1);
+
+		$current_page = clamp($current_page, 1, $total_pages);
 		
 		$threads_per_page = 10;
 		$start = $threads_per_page * ($current_page - 1);
 
-		$get_threads = "
+		$result = $database->Execute("
 			SELECT image_id,MAX(posted) AS latest
-			FROM comments $where
+			FROM comments
+			$where
 			GROUP BY image_id
 			ORDER BY latest DESC
 			LIMIT :limit OFFSET :offset
-			";
-		$result = $database->Execute($get_threads, array("limit"=>$threads_per_page, "offset"=>$start));
+		", array("limit"=>$threads_per_page, "offset"=>$start));
+
+		$user_ratings = ext_is_live("Ratings") ? Ratings::get_user_privs($user) : "";
 
 		$images = array();
 		while($row = $result->fetch()) {
 			$image = Image::by_id($row["image_id"]);
-			if (!is_null($image)) {
+			if(
+				ext_is_live("Ratings") && !is_null($image) &&
+				strpos($user_ratings, $image->rating) === FALSE
+			) {
+				$image = null; // this is "clever", I may live to regret it
+			}
+			if(!is_null($image)) {
 				$comments = $this->get_comments($image->id);
-				if(class_exists("Ratings")) {
-					if(strpos($user_ratings, $image->rating) === FALSE) {
-						$image = null; // this is "clever", I may live to regret it
-					}
-				}
-				if(!is_null($image)) $images[] = array($image, $comments);
+				$images[] = array($image, $comments);
 			}
 		}
 
@@ -341,72 +390,85 @@ class CommentList extends Extension {
 // }}}
 
 // get comments {{{
+	/**
+	 * @param string $query
+	 * @param array $args
+	 * @return Comment[]
+	 */
+	private function get_generic_comments($query, $args) {
+		global $database;
+		$rows = $database->get_all($query, $args);
+		$comments = array();
+		foreach($rows as $row) {
+			$comments[] = new Comment($row);
+		}
+		return $comments;
+	}
+
+	/**
+	 * @param int $count
+	 * @return Comment[]
+	 */
 	private function get_recent_comments($count) {
-		global $config, $database;
-		$rows = $database->get_all("
-				SELECT
+		return $this->get_generic_comments("
+			SELECT
 				users.id as user_id, users.name as user_name, users.email as user_email, users.class as user_class,
 				comments.comment as comment, comments.id as comment_id,
 				comments.image_id as image_id, comments.owner_ip as poster_ip,
 				comments.posted as posted
-				FROM comments
-				LEFT JOIN users ON comments.owner_id=users.id
-				ORDER BY comments.id DESC
-				LIMIT :limit
-				", array("limit"=>$count));
-		$comments = array();
-		foreach($rows as $row) {
-			$comments[] = new Comment($row);
-		}
-		return $comments;
+			FROM comments
+			LEFT JOIN users ON comments.owner_id=users.id
+			ORDER BY comments.id DESC
+			LIMIT :limit
+		", array("limit"=>$count));
 	}
 
+	/**
+	 * @param int $user_id
+	 * @param int $count
+	 * @param int $offset
+	 * @return Comment[]
+	 */
 	private function get_user_comments(/*int*/ $user_id, /*int*/ $count, /*int*/ $offset=0) {
-		global $config, $database;
-		$rows = $database->get_all("
-				SELECT
+		return $this->get_generic_comments("
+			SELECT
 				users.id as user_id, users.name as user_name, users.email as user_email, users.class as user_class,
 				comments.comment as comment, comments.id as comment_id,
 				comments.image_id as image_id, comments.owner_ip as poster_ip,
 				comments.posted as posted
-				FROM comments
-				LEFT JOIN users ON comments.owner_id=users.id
-				WHERE users.id = :user_id
-				ORDER BY comments.id DESC
-				LIMIT :limit OFFSET :offset
-				", array("user_id"=>$user_id, "offset"=>$offset, "limit"=>$count));
-		$comments = array();
-		foreach($rows as $row) {
-			$comments[] = new Comment($row);
-		}
-		return $comments;
+			FROM comments
+			LEFT JOIN users ON comments.owner_id=users.id
+			WHERE users.id = :user_id
+			ORDER BY comments.id DESC
+			LIMIT :limit OFFSET :offset
+		", array("user_id"=>$user_id, "offset"=>$offset, "limit"=>$count));
 	}
 
+	/**
+	 * @param int $image_id
+	 * @return Comment[]
+	 */
 	private function get_comments(/*int*/ $image_id) {
-		global $config, $database;
-		$i_image_id = int_escape($image_id);
-		$rows = $database->get_all("
-				SELECT
+		return $this->get_generic_comments("
+			SELECT
 				users.id as user_id, users.name as user_name, users.email as user_email, users.class as user_class,
 				comments.comment as comment, comments.id as comment_id,
 				comments.image_id as image_id, comments.owner_ip as poster_ip,
 				comments.posted as posted
-				FROM comments
-				LEFT JOIN users ON comments.owner_id=users.id
-				WHERE comments.image_id=:image_id
-				ORDER BY comments.id ASC
-				", array("image_id"=>$i_image_id));
-		$comments = array();
-		foreach($rows as $row) {
-			$comments[] = new Comment($row);
-		}
-		return $comments;
+			FROM comments
+			LEFT JOIN users ON comments.owner_id=users.id
+			WHERE comments.image_id=:image_id
+			ORDER BY comments.id ASC
+		", array("image_id"=>$image_id));
 	}
 // }}}
 
 // add / remove / edit comments {{{
+	/**
+	 * @return bool
+	 */
 	private function is_comment_limit_hit() {
-		global $user, $config, $database;
+		global $config, $database;
 
 		// sqlite fails at intervals
 		if($database->get_driver_name() === "sqlite") return false;
@@ -418,13 +480,18 @@ class CommentList extends Extension {
 		else $window_sql = "interval '$window minute'";
 
 		// window doesn't work as an SQL param because it's inside quotes >_<
-		$result = $database->get_all("SELECT * FROM comments WHERE owner_ip = :remote_ip ".
-				"AND posted > now() - $window_sql",
-				Array("remote_ip"=>$_SERVER['REMOTE_ADDR']));
+		$result = $database->get_all("
+			SELECT *
+			FROM comments
+			WHERE owner_ip = :remote_ip AND posted > now() - $window_sql
+		", array("remote_ip"=>$_SERVER['REMOTE_ADDR']));
 
 		return (count($result) >= $max);
 	}
 
+	/**
+	 * @return bool
+	 */
 	private function hash_match() {
 		return ($_POST['hash'] == $this->get_hash());
 	}
@@ -435,11 +502,17 @@ class CommentList extends Extension {
 	 * many times.
 	 *
 	 * FIXME: assumes comments are posted via HTTP...
+	 *
+	 * @return string
 	 */
 	public static function get_hash() {
 		return md5($_SERVER['REMOTE_ADDR'] . date("%Y%m%d"));
 	}
 
+	/**
+	 * @param string $text
+	 * @return bool
+	 */
 	private function is_spam_akismet(/*string*/ $text) {
 		global $config, $user;
 		if(strlen($config->get_string('comment_wordpress_key')) > 0) {
@@ -478,26 +551,58 @@ class CommentList extends Extension {
 		return false;
 	}
 
+	/**
+	 * @param int $image_id
+	 * @param int $comment
+	 * @return null
+	 */
 	private function is_dupe(/*int*/ $image_id, /*string*/ $comment) {
 		global $database;
-		return ($database->get_row("SELECT * FROM comments WHERE image_id=:image_id AND comment=:comment", array("image_id"=>$image_id, "comment"=>$comment)));
+		return $database->get_row("
+			SELECT *
+			FROM comments
+			WHERE image_id=:image_id AND comment=:comment
+		", array("image_id"=>$image_id, "comment"=>$comment));
 	}
 // do some checks
-	private function sanity_check_pagenumber(/*int*/ $pagenum, /*int*/ $maxpage){
-		if (!is_numeric($pagenum)){
-			$pagenum=1;
+
+	/**
+	 * @param int $image_id
+	 * @param User $user
+	 * @param string $comment
+	 * @throws CommentPostingException
+	 */
+	private function add_comment_wrapper(/*int*/ $image_id, User $user, /*string*/ $comment) {
+		global $database, $page;
+
+		if(!$user->can("bypass_comment_checks")) {
+			// will raise an exception if anything is wrong
+			$this->comment_checks($image_id, $user, $comment);
 		}
-		if ($pagenum>$maxpage){
-			$pagenum=$maxpage;
+
+		// all checks passed
+		if($user->is_anonymous()) {
+			$page->add_cookie("nocache", "Anonymous Commenter", time()+60*60*24, "/");
 		}
-		if ($pagenum<=0){
-			$pagenum=1;
-		}
-		return $pagenum;
+		$database->Execute(
+				"INSERT INTO comments(image_id, owner_id, owner_ip, posted, comment) ".
+				"VALUES(:image_id, :user_id, :remote_addr, now(), :comment)",
+				array("image_id"=>$image_id, "user_id"=>$user->id, "remote_addr"=>$_SERVER['REMOTE_ADDR'], "comment"=>$comment));
+		$cid = $database->get_last_insert_id('comments_id_seq');
+		$snippet = substr($comment, 0, 100);
+		$snippet = str_replace("\n", " ", $snippet);
+		$snippet = str_replace("\r", " ", $snippet);
+		log_info("comment", "Comment #$cid added to Image #$image_id: $snippet", false, array("image_id"=>$image_id, "comment_id"=>$cid));
 	}
 
-	private function add_comment_wrapper(/*int*/ $image_id, User $user, /*string*/ $comment) {
-		global $database, $config;
+	/**
+	 * @param int $image_id
+	 * @param User $user
+	 * @param string $comment
+	 * @throws CommentPostingException
+	 */
+	private function comment_checks(/*int*/ $image_id, User $user, /*string*/ $comment) {
+		global $config, $page;
 
 		// basic sanity checks
 		if(!$user->can("create_comment")) {
@@ -518,7 +623,7 @@ class CommentList extends Extension {
 			throw new CommentPostingException("Comment too repetitive~");
 		}
 		else if($user->is_anonymous() && !$this->hash_match()) {
-			set_prefixed_cookie("nocache", "Anonymous Commenter", time()+60*60*24, "/");
+			$page->add_cookie("nocache", "Anonymous Commenter", time()+60*60*24, "/");
 			throw new CommentPostingException(
 					"Comment submission form is out of date; refresh the ".
 					"comment form to show you aren't a spammer~");
@@ -538,22 +643,6 @@ class CommentList extends Extension {
 		}
 		else if($user->is_anonymous() && $this->is_spam_akismet($comment)) {
 			throw new CommentPostingException("Akismet thinks that your comment is spam. Try rewriting the comment, or logging in.");
-		}
-
-		// all checks passed
-		else {
-			if($user->is_anonymous()) {
-				set_prefixed_cookie("nocache", "Anonymous Commenter", time()+60*60*24, "/");
-			}
-			$database->Execute(
-					"INSERT INTO comments(image_id, owner_id, owner_ip, posted, comment) ".
-					"VALUES(:image_id, :user_id, :remote_addr, now(), :comment)",
-					array("image_id"=>$image_id, "user_id"=>$user->id, "remote_addr"=>$_SERVER['REMOTE_ADDR'], "comment"=>$comment));
-			$cid = $database->get_last_insert_id('comments_id_seq');
-			$snippet = substr($comment, 0, 100);
-			$snippet = str_replace("\n", " ", $snippet);
-			$snippet = str_replace("\r", " ", $snippet);
-			log_info("comment", "Comment #$cid added to Image #$image_id: $snippet", false, array("image_id"=>$image_id, "comment_id"=>$cid));
 		}
 	}
 // }}}

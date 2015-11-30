@@ -18,8 +18,12 @@ class CommentListTheme extends Themelet {
 	}
 
 	/**
-	 * Display a page with a list of images, and for each image,
-	 * the image's comments
+	 * Display a page with a list of images, and for each image, the image's comments.
+	 *
+	 * @param array $images
+	 * @param int $page_number
+	 * @param int $total_pages
+	 * @param bool $can_post
 	 */
 	public function display_comment_list($images, $page_number, $total_pages, $can_post) {
 		global $config, $page, $user;
@@ -62,8 +66,7 @@ class CommentListTheme extends Themelet {
 			
 			$comment_count = count($comments);
 			if($comment_limit > 0 && $comment_count > $comment_limit) {
-				$hidden = $comment_count - $comment_limit;
-				$comment_html .= '<p>showing '.$comment_limit.' of '.$comment_count.' comments</p>';
+				$comment_html .= "<p>showing $comment_limit of $comment_count comments</p>";
 				$comments = array_slice($comments, -$comment_limit);
 				$this->show_anon_id = false;
 			}
@@ -84,7 +87,8 @@ class CommentListTheme extends Themelet {
 						$comment_html .= $this->build_postbox($image->id);
 					}
 					else {
-						$comment_html .= "<a href='".make_link("post/view/".$image->id)."'>Add Comment</a>";
+						$link = make_link("post/view/".$image->id);
+						$comment_html .= "<a href='$link'>Add Comment</a>";
 					}
 				}
 			}
@@ -119,9 +123,9 @@ class CommentListTheme extends Themelet {
 
 
 	/**
-	 * Add some comments to the page, probably in a sidebar
+	 * Add some comments to the page, probably in a sidebar.
 	 *
-	 * $comments = an array of Comment objects to be shown
+	 * @param \Comment[] $comments An array of Comment objects to be shown
 	 */
 	public function display_recent_comments($comments) {
 		global $page;
@@ -136,7 +140,11 @@ class CommentListTheme extends Themelet {
 
 
 	/**
-	 * Show comments for an image
+	 * Show comments for an image.
+	 *
+	 * @param Image $image
+	 * @param \Comment[] $comments
+	 * @param bool $postbox
 	 */
 	public function display_image_comments(Image $image, $comments, $postbox) {
 		global $page;
@@ -153,9 +161,12 @@ class CommentListTheme extends Themelet {
 
 
 	/**
-	 * Show comments made by a user
+	 * Show comments made by a user.
+	 *
+	 * @param \Comment[] $comments
+	 * @param \User $user
 	 */
-	public function display_recent_user_comments($comments, $user) {
+	public function display_recent_user_comments($comments, User $user) {
 		global $page;
 		$html = "";
 		foreach($comments as $comment) {
@@ -170,7 +181,13 @@ class CommentListTheme extends Themelet {
 		$page->add_block(new Block("Comments", $html, "left", 70, "comment-list-user"));
 	}
 
-	public function display_all_user_comments($comments, $page_number, $total_pages, $user) {
+	/**
+	 * @param \Comment[] $comments
+	 * @param int $page_number
+	 * @param int $total_pages
+	 * @param \User $user
+	 */
+	public function display_all_user_comments($comments, $page_number, $total_pages, User $user) {
 		global $page;
 		
 		assert(is_numeric($page_number));
@@ -193,7 +210,6 @@ class CommentListTheme extends Themelet {
 		//$u_tags = url_escape(implode(" ", $search_terms));
 		//$query = empty($u_tags) ? "" : '/'.$u_tags;
 
-
 		$h_prev = ($page_number <= 1) ? "Prev" : "<a href='$prev'>Prev</a>";
 		$h_index = "<a href='".make_link("post/list")."'>Index</a>";
 		$h_next = ($page_number >= $total_pages) ? "Next" : "<a href='$next'>Next</a>";
@@ -203,7 +219,12 @@ class CommentListTheme extends Themelet {
 		$this->display_paginator($page, "comment/beta-search/{$user->name}", null, $page_number, $total_pages);
 	}
 
-	protected function comment_to_html($comment, $trim=false) {
+	/**
+	 * @param \Comment $comment
+	 * @param bool $trim
+	 * @return string
+	 */
+	protected function comment_to_html(Comment $comment, $trim=false) {
 		global $config, $user;
 
 		$tfe = new TextFormattingEvent($comment->comment);
@@ -211,7 +232,6 @@ class CommentListTheme extends Themelet {
 
 		$i_uid = int_escape($comment->owner_id);
 		$h_name = html_escape($comment->owner_name);
-		$h_poster_ip = html_escape($comment->poster_ip);
 		$h_timestamp = autodate($comment->posted);
 		$h_comment = ($trim ? truncate($tfe->stripped, 50) : $tfe->formatted);
 		$i_comment_id = int_escape($comment->comment_id);
@@ -276,6 +296,10 @@ class CommentListTheme extends Themelet {
 		return $html;
 	}
 
+	/**
+	 * @param int $image_id
+	 * @return string
+	 */
 	protected function build_postbox(/*int*/ $image_id) {
 		global $config;
 
@@ -284,7 +308,7 @@ class CommentListTheme extends Themelet {
 		$h_captcha = $config->get_bool("comment_captcha") ? captcha_get_html() : "";
 
 		return '
-		<div class="comment">
+		<div class="comment comment_add">
 			'.make_form(make_link("comment/add")).'
 				<input type="hidden" name="image_id" value="'.$i_image_id.'" />
 				<input type="hidden" name="hash" value="'.$hash.'" />
